@@ -44,6 +44,11 @@
   .over .fill { background:var(--red); }
   .cat { margin-top:10px; }
   .cat .row { display:flex; justify-content:space-between; font-size:.9rem; }
+  /* ---------- Gesamtübersicht ---------- */
+  .yrow { display:grid; grid-template-columns:2.6em 1fr 1fr 1fr; gap:4px; width:100%; text-align:right;
+          font-size:.82rem; padding:0 2px; border-top:1px solid var(--line); border-radius:0; }
+  .yrow span:first-child { text-align:left; }
+  .yrow.now { font-weight:700; }
   /* ---------- Buchungsliste ---------- */
   ul { list-style:none; padding:0; }
   li { display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--line); }
@@ -94,7 +99,26 @@
     <h1 id="month"></h1>
     <button id="next" aria-label="Nächster Monat">›</button>
   </header>
+  <div class="seg" id="viewSeg">
+    <button data-view="month" class="on">Monat</button>
+    <button data-view="year">Gesamt</button>
+  </div>
 
+  <div id="yearView" hidden>
+    <section class="card">
+      <div class="grid">
+        <div><span class="mut">Einnahmen Jahr</span><b class="in" id="yIn"></b></div>
+        <div><span class="mut">Ausgaben Jahr</span><b id="yOut"></b></div>
+        <div class="big"><span class="mut">Saldo Jahr</span><b id="ySaldo"></b></div>
+        <div class="big"><span class="mut">Kassenstand Ende</span><b id="yStand"></b></div>
+      </div>
+    </section>
+    <section class="card"><div class="mut">Monate (antippen = öffnen)</div><div id="yMonths"></div></section>
+    <section class="card" id="yCats"></section>
+    <section class="card" id="fixed"></section>
+  </div>
+
+  <div id="monthView">
   <section class="card">
     <div class="grid">
       <div><span class="mut">Einnahmen</span><b class="in" id="sumIn"></b></div>
@@ -107,6 +131,7 @@
 
   <section class="card" id="cats"></section>
   <section class="card"><ul id="list"></ul></section>
+  </div>
 
   <footer>
     <button id="btnBudget">Budget</button>
@@ -208,6 +233,7 @@ function save() {
 let state = load();
 let cur = monthIdx(today());   // angezeigter Monat
 let form = { type: "out", repeat: "none" };
+let view = "month";            // "month" = Monatsansicht, "year" = Gesamtübersicht
 
 /* ================= Wiederkehrende Buchungen ================= */
 /** Wie oft fällt eine Buchung im Zeitraum Start…bis Monat t (einschließlich) an? */
@@ -222,23 +248,79 @@ const occursIn = (e, t) => countUntil(e, t) - countUntil(e, t - 1) > 0;
 const signed = (e) => (e.type === "in" ? e.amount : -e.amount);
 
 /* ================= Darstellung ================= */
-function render() {
-  const items = state.entries.filter((e) => occursIn(e, cur))
-    .map((e) => ({ ...e, day: toIso(cur, +e.date.slice(8)) }))
+/** Alle Buchungen eines Monats t samt Summen */
+function monthData(t) {
+  const items = state.entries.filter((e) => occursIn(e, t))
+    .map((e) => ({ ...e, day: toIso(t, +e.date.slice(8)) }))
     .sort((a, b) => b.day.localeCompare(a.day));
-  const sumIn = items.filter((e) => e.type === "in").reduce((s, e) => s + e.amount, 0);
-  const sumOut = items.filter((e) => e.type === "out").reduce((s, e) => s + e.amount, 0);
-  const stand = state.entries.reduce((s, e) => s + signed(e) * countUntil(e, cur), 0);
+  const total = (type) => items.filter((e) => e.type === type).reduce((s, e) => s + e.amount, 0);
+  return { t, items, sumIn: total("in"), sumOut: total("out") };
+}
+/** Kassenstand = Summe aller Buchungen bis einschließlich Monat t */
+const standAt = (t) => state.entries.reduce((s, e) => s + signed(e) * countUntil(e, t), 0);
 
+function render() {
+  $("#monthView").hidden = view !== "month";
+  $("#yearView").hidden = view !== "year";
+  if (view === "year") return renderYear();
+  const { items, sumIn, sumOut } = monthData(cur);
   $("#month").textContent = monthLabel(cur);
   $("#sumIn").textContent = fmt(sumIn);
   $("#sumOut").textContent = fmt(sumOut);
   setMoney("#saldo", sumIn - sumOut);
-  setMoney("#stand", stand);
+  setMoney("#stand", standAt(cur));
   renderBudget(sumOut);
-  renderCats(items, sumOut);
+  renderCats($("#cats"), items, "Ausgaben nach Kategorie");
   renderList(items);
 }
+
+/* ---------- Gesamtübersicht: Jahr, Monate, Kategorien, wiederkehrende Zahlungen ---------- */
+const eur0 = new Intl.NumberFormat("de-DE", { style:"currency", currency:"EUR", maximumFractionDigits:0 });
+function renderYear() {
+  const y = Math.floor(cur / 12), now = monthIdx(today());
+  const months = Array.from({ length: 12 }, (_, m) => monthData(y * 12 + m));
+  const yIn = months.reduce((s, m) => s + m.sumIn, 0), yOut = months.reduce((s, m) => s + m.sumOut, 0);
+  $("#month").textContent = "Gesamt " + y;
+  $("#yIn").textContent = fmt(yIn);
+  $("#yOut").textContent = fmt(yOut);
+  setMoney("#ySaldo", yIn - yOut);
+  setMoney("#yStand", standAt(y * 12 + 11));
+  $("#yMonths").innerHTML = `<div class="yrow mut"><span></span><span>Ein</span><span>Aus</span><span>Saldo</span></div>`
+    + months.map((m) => {
+      const s = m.sumIn - m.sumOut, name = new Date(y, m.t % 12, 1).toLocaleDateString("de-DE", { month:"short" });
+      return `<button class="yrow${m.t === now ? " now" : ""}" data-t="${m.t}"><span>${name}</span>`
+        + `<span class="in">${eur0.format(m.sumIn / 100)}</span><span>${eur0.format(m.sumOut / 100)}</span>`
+        + `<span class="${s < 0 ? "neg" : ""}">${eur0.format(s / 100)}</span></button>`;
+    }).join("");
+  renderCats($("#yCats"), months.flatMap((m) => m.items), "Ausgaben " + y + " nach Kategorie");
+  renderFixed(now);
+}
+/** Aktive wiederkehrende Zahlungen, umgerechnet auf einen Monatsdurchschnitt */
+function renderFixed(now) {
+  const act = state.entries.filter((e) => e.repeat !== "none" && (!e.end || monthIdx(e.end + "-01") >= now));
+  $("#fixed").hidden = !act.length;
+  const perMonth = (e) => Math.round(e.amount / STEP[e.repeat]);
+  const sum = (type) => act.filter((e) => e.type === type).reduce((s, e) => s + perMonth(e), 0);
+  const fIn = sum("in"), fOut = sum("out");
+  $("#fixed").innerHTML = `<div class="mut">Wiederkehrende Zahlungen · Ø pro Monat</div>`
+    + `<div class="grid" style="margin:8px 0"><div><span class="mut">Fix rein</span><b class="in">${fmt(fIn)}</b></div>`
+    + `<div><span class="mut">Fix raus</span><b>${fmt(fOut)}</b></div>`
+    + `<div><span class="mut">Bleibt frei</span><b class="${fIn - fOut < 0 ? "neg" : ""}">${fmt(fIn - fOut)}</b></div></div><ul>`
+    + act.sort((a, b) => perMonth(b) - perMonth(a)).map((e) =>
+      `<li><span class="ico">${CATS[e.type][e.cat] || "📦"}</span><div class="txt"><div>${esc(e.note || e.cat)}</div>`
+      + `<div class="mut">${REP_LABEL[e.repeat]} seit ${new Date(e.date).toLocaleDateString("de-DE", { month:"2-digit", year:"numeric" })}`
+      + `${e.end ? " bis " + e.end.slice(5) + "/" + e.end.slice(0, 4) : ""}</div></div>`
+      + `<span class="amt ${e.type === "in" ? "in" : ""}">${e.type === "in" ? "+" : "−"}${fmt(e.amount)}</span></li>`).join("")
+    + `</ul>`;
+}
+$("#yMonths").onclick = (e) => {
+  const b = e.target.closest("button[data-t]"); if (!b) return;
+  cur = +b.dataset.t; view = "month"; setSeg("#viewSeg", "view", view); render();
+};
+$("#viewSeg").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  view = b.dataset.view; setSeg("#viewSeg", "view", view); render();
+};
 function setMoney(sel, cents) {
   const el = $(sel);
   el.textContent = fmt(cents);
@@ -253,13 +335,14 @@ function renderBudget(sumOut) {
     + `${rest < 0 ? "überschritten um " + fmt(-rest) : "übrig " + fmt(rest)}</span></div>`
     + `<div class="track"><div class="fill" style="width:${pct}%"></div></div>`;
 }
-function renderCats(items, sumOut) {
+/** Ausgaben-Balken pro Kategorie in Container el */
+function renderCats(el, items, title) {
   const per = {};
   items.filter((e) => e.type === "out").forEach((e) => { per[e.cat] = (per[e.cat] || 0) + e.amount; });
   const rows = Object.entries(per).sort((a, b) => b[1] - a[1]);
-  const max = rows.length ? rows[0][1] : 1;
-  $("#cats").hidden = !rows.length;
-  $("#cats").innerHTML = `<div class="mut">Ausgaben nach Kategorie</div>` + rows.map(([c, v]) =>
+  const max = rows.length ? rows[0][1] : 1, sumOut = rows.reduce((s, r) => s + r[1], 0);
+  el.hidden = !rows.length;
+  el.innerHTML = `<div class="mut">${title}</div>` + rows.map(([c, v]) =>
     `<div class="cat"><div class="row"><span>${CATS.out[c] || "📦"} ${esc(c)}</span><span>${fmt(v)} · ${Math.round(v / sumOut * 100)} %</span></div>`
     + `<div class="track"><div class="fill" style="width:${(v / max) * 100}%"></div></div></div>`).join("");
 }
@@ -276,7 +359,7 @@ function renderList(items) {
 }
 
 /* ================= Monatswechsel (Pfeile + Wischen) ================= */
-const go = (d) => { cur += d; render(); };
+const go = (d) => { cur += view === "year" ? d * 12 : d; render(); };   // Jahresansicht: ganze Jahre
 $("#prev").onclick = () => go(-1);
 $("#next").onclick = () => go(1);
 let touch = null;
