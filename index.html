@@ -85,6 +85,13 @@
   .tiles button:active { background:var(--line); }
   .shake { animation:shake .3s; border-color:var(--red); }
   @keyframes shake { 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  /* ---------- Update-Banner ---------- */
+  .upd { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;
+         border:2px solid var(--acc); font-weight:600; }
+  .upd[hidden] { display:none; }
+  .upd span { flex:1; min-width:0; font-size:.95rem; }
+  .upd button { background:var(--acc); color:#fff; border-radius:10px; padding:0 14px; white-space:nowrap; }
+  @media (prefers-color-scheme: dark) { .upd button { color:#06302c; } }
   /* ---------- Hinweis-Toast ---------- */
   #toast { position:fixed; left:50%; top:calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top))); transform:translate(-50%,-150%);
            background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:12px; transition:transform .3s;
@@ -94,6 +101,10 @@
 </head>
 <body>
 <main id="main">
+  <div class="card upd" id="updBar" hidden>
+    <span id="updText">Neue Version verfügbar</span>
+    <button id="updBtn">Aktualisieren</button>
+  </div>
   <header>
     <button id="prev" aria-label="Vorheriger Monat">‹</button>
     <h1 id="month"></h1>
@@ -134,6 +145,7 @@
   </div>
 
   <footer>
+    <button id="btnUpdate">Updates</button>
     <button id="btnBudget">Budget</button>
     <button id="btnExport">Export</button>
     <button id="btnImport">Import</button>
@@ -172,7 +184,7 @@
 const KEY = "kassenbuch", SCHEMA = 2;
 const CATS = {
   out: { Wohnen:"🏠", Lebensmittel:"🛒", "Mobilität":"🚗", Freizeit:"🎉", Abos:"📺", Versicherung:"🛡️", Sonstiges:"📦" },
-  in:  { Gehalt:"💼", Nebenjob:"🧰", Erstattung:"↩️", Geschenk:"🎁", Sonstiges:"💶" },
+  in:  { Gehalt:"💼", Rente:"🧓", Nebenjob:"🧰", Erstattung:"↩️", Geschenk:"🎁", Sonstiges:"💶" },
 };
 const STEP = { none:0, monthly:1, quarterly:3, yearly:12 };   // Abstand in Monaten
 const REP_LABEL = { monthly:"monatlich", quarterly:"vierteljährlich", yearly:"jährlich" };
@@ -182,6 +194,10 @@ const $ = (s) => document.querySelector(s);
 const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 window.APP_VERSION = "";   // wird beim APK-Build durch scripts/build-www.js gesetzt
 const REPO = "OlSayris/kassenbuch";
+// App: Daten zusätzlich als Datei im App-Datenordner. localStorage der WebView wird verzögert
+// geschrieben und kann beim harten Beenden der App verloren gehen.
+const FS = NATIVE && window.Capacitor.Plugins ? window.Capacitor.Plugins.Filesystem : null;
+const DATA_FILE = "kassenbuch.json";
 
 /* ================= Hilfsfunktionen ================= */
 const fmt = (cents) => eur.format(cents / 100);
@@ -229,9 +245,26 @@ function load() {
   try { return migrate(JSON.parse(localStorage.getItem(KEY) || "{}")); }
   catch { return { entries: [], budget: 0 }; }
 }
+let writeChain = Promise.resolve();   // Dateischreibvorgänge nacheinander, nie parallel
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify({ schemaVersion: SCHEMA, ...state })); }
-  catch { toast("Speichern fehlgeschlagen – Speicher voll?"); }
+  const json = JSON.stringify({ schemaVersion: SCHEMA, ...state });
+  let ok = true;
+  try { localStorage.setItem(KEY, json); } catch { ok = false; }
+  if (FS) {
+    writeChain = writeChain
+      .then(() => FS.writeFile({ path: DATA_FILE, data: json, directory: "DATA", encoding: "utf8" }))
+      .catch(() => toast("Speichern fehlgeschlagen!"));
+  } else if (!ok) toast("Speichern fehlgeschlagen – Speicher voll?");
+}
+/** App-Start: Datei ist maßgeblich. Fehlt sie (erste Version), werden die localStorage-Daten übernommen. */
+async function loadFromFile() {
+  try {
+    const r = await FS.readFile({ path: DATA_FILE, directory: "DATA", encoding: "utf8" });
+    state = migrate(JSON.parse(r.data));
+    render();
+  } catch {
+    if (state.entries.length || state.budget) save();
+  }
 }
 
 let state = load();
@@ -492,27 +525,43 @@ function toast(msg) {
   $("#touchIcon").href = c.toDataURL("image/png");
 })();
 
-/* ================= Service Worker & automatische Updates ================= */
-/* ================= Android-App: Version anzeigen und nach neuer APK suchen ================= */
+/* ================= Updates: Android-App (neue APK) ================= */
+const APK_URL = `https://github.com/${REPO}/releases/latest/download/kassenbuch.apk`;   // zeigt immer auf die neueste APK
 const newer = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number);
   for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
-async function checkApkUpdate() {
+/** Fragt GitHub nach dem neuesten Release. manual = Nutzer hat „Updates“ getippt → immer Rückmeldung geben. */
+async function checkApkUpdate(manual) {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { cache: "no-store" });
-    if (!r.ok) return;
-    const rel = await r.json(), latest = String(rel.tag_name || "").replace(/^v/, "");
-    const apk = (rel.assets || []).find((a) => a.name.endsWith(".apk"));
-    if (!apk || !newer(latest, window.APP_VERSION)) return;
-    // Externer Link: Capacitor öffnet ihn im System-Browser, der die APK herunterlädt
-    $("#version").innerHTML = `Version ${esc(window.APP_VERSION)} · <a href="${esc(apk.browser_download_url)}" `
-      + `style="color:var(--acc)">Update ${esc(latest)} laden</a>`;
-    toast(`Neue Version ${latest} verfügbar – Link unten`);
-  } catch { /* offline: kein Update-Check */ }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const latest = String((await r.json()).tag_name || "").replace(/^v/, "");
+    if (latest && newer(latest, window.APP_VERSION)) {
+      $("#updText").textContent = `Neue Version ${latest} verfügbar`;
+      $("#updBar").hidden = false;
+    } else if (manual) toast(`Du hast die neueste Version (${window.APP_VERSION})`);
+  } catch { if (manual) toast("Update-Prüfung nicht möglich – keine Verbindung?"); }
 }
+// „Jetzt aktualisieren“: Capacitor öffnet externe Links im System-Browser → APK wird geladen → antippen → installieren
+$("#updBtn").onclick = () => {
+  toast("Download startet – danach die APK öffnen und „Aktualisieren“ tippen");
+  setTimeout(() => { location.href = APK_URL; }, 600);
+};
+/* ================= Updates: Web-Version (Service Worker) ================= */
+let swReg = null;
+async function checkWebUpdate() {
+  if (!swReg) return toast("Updates werden hier nicht unterstützt");
+  try {
+    await swReg.update();
+    // Gibt es eine neue Version, übernimmt der neue SW und die Seite lädt automatisch neu
+    if (!swReg.installing && !swReg.waiting) toast("Du hast die neueste Version");
+  } catch { toast("Update-Prüfung nicht möglich – keine Verbindung?"); }
+}
+$("#btnUpdate").onclick = () => (NATIVE ? checkApkUpdate(true) : checkWebUpdate());
+
 if (NATIVE) {
   $("#version").textContent = "Version " + window.APP_VERSION;
-  checkApkUpdate();
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkApkUpdate(); });
+  checkApkUpdate(false);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkApkUpdate(false); });
 } else if ("serviceWorker" in navigator) {
   const hadController = !!navigator.serviceWorker.controller;   // false beim allerersten Start
   let reloading = false;
@@ -524,6 +573,7 @@ if (NATIVE) {
     location.reload();
   });
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => {
+    swReg = reg;
     const check = () => reg.update().catch(() => {});            // offline: einfach ignorieren
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
     check();
@@ -543,6 +593,9 @@ if (NATIVE) {
 }
 
 render();
+if (FS) loadFromFile();
+// Web: Browser bitten, die Daten nicht automatisch zu löschen (bei Speicherknappheit)
+else if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
 </body>
 </html>
