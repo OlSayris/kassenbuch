@@ -83,6 +83,9 @@
                   flex-direction:column; align-items:center; justify-content:center; padding:4px; }
   .tiles button span { font-size:1.5rem; }
   .tiles button:active { background:var(--line); }
+  .tiles button.sug { outline:2px solid var(--acc); }           /* vom Bon vorgeschlagene Kategorie */
+  .scan { width:100%; border:1px dashed var(--acc); color:var(--acc); border-radius:12px; margin-bottom:10px; }
+  .scan[hidden] { display:none; }
   .shake { animation:shake .3s; border-color:var(--red); }
   @keyframes shake { 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
   /* ---------- Update-Banner ---------- */
@@ -161,6 +164,7 @@
     <button data-type="out" class="on">Ausgabe</button>
     <button data-type="in">Einnahme</button>
   </div>
+  <button class="scan" id="scanBtn" hidden>📷 Kassenbon fotografieren</button>
   <input id="amount" inputmode="decimal" placeholder="0,00 €" autocomplete="off" aria-label="Betrag">
   <div class="two">
     <input id="date" type="date" aria-label="Datum">
@@ -444,6 +448,7 @@ function openSheet() {
   $("#amount").value = ""; $("#note").value = "";
   // Datum: heute, oder der 1. des angezeigten Monats, falls ein anderer Monat offen ist
   $("#date").value = monthIdx(today()) === cur ? today() : toIso(cur, 1);
+  $("#scanBtn").hidden = !canScan();   // Foto-Erfassung nur in der Android-App
   $("#sheet").showModal();
   $("#amount").focus();
 }
@@ -473,6 +478,69 @@ $("#tiles").onclick = (e) => {
   render();
   toast(`${entry.type === "in" ? "Einnahme" : "Ausgabe"} ${fmt(amount)} gespeichert`);
 };
+
+/* ================= Kassenbon fotografieren (nur App: Kamera + ML Kit offline) ================= */
+/* RECEIPT-PARSER START */
+const RCPT_CATS = [   // Händler/Stichwort → Kategorie-Vorschlag
+  ["Lebensmittel", /rewe|edeka|aldi|lidl|netto marken|penny|kaufland|norma|globus|tegut|marktkauf|bäck|baeck|metzger|getränke|supermarkt/i],
+  ["Mobilität", /aral|shell|esso|\bjet\b|totalenergies|tankstelle|diesel|benzin|super e|deutsche bahn|\bdb\b|parkhaus|parken|taxi/i],
+  ["Freizeit", /restaurant|gastst|café|cafe|kino|pizz|mcdonald|burger|imbiss|döner|doener|bistro|eiscafe|eisdiele/i],
+  ["Wohnen", /ikea|obi\b|bauhaus|hornbach|toom|hagebau|baumarkt|möbel|moebel/i],
+];
+/** Liest Betrag (Cent), Datum, Händler und Kategorie-Vorschlag aus dem erkannten Bon-Text. */
+function parseReceipt(text, todayIso) {
+  const lines = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  const AMT = /(\d{1,3}(?:[.\s]\d{3})+|\d+)\s?[,.]\s?(\d{2})(?!\d)/g;
+  const amountsIn = (l) => [...l.matchAll(AMT)].map((m) => +(m[1].replace(/[.\s]/g, "") + m[2]));
+  const TOTAL = /summe|zu zahlen|zahlbetrag|gesamt|total|endbetrag|betrag eur|kartenzahlung|ec-?karte/i;
+  const SKIP = /gegeben|rückgeld|rueckgeld|zurück|mwst|ust\b|netto|steuer|brutto|rabatt|pfand|%/i;
+  let amount = NaN;
+  // 1. Betrag in derselben oder der nächsten Zeile nach „Summe“, „Zu zahlen“ …
+  for (let i = 0; i < lines.length && isNaN(amount); i++) {
+    if (!TOTAL.test(lines[i]) || SKIP.test(lines[i])) continue;
+    const a = amountsIn(lines[i]).concat(amountsIn(lines[i + 1] || ""));
+    if (a.length) amount = Math.max(...a);
+  }
+  // 2. Sonst: größter Betrag, der mehrfach vorkommt (Summe steht oft doppelt), sonst größter Betrag
+  if (isNaN(amount)) {
+    const all = lines.filter((l) => !SKIP.test(l)).flatMap(amountsIn).filter((c) => c > 0 && c < 1e7);
+    const twice = all.filter((c, i) => all.indexOf(c) !== i);
+    if (all.length) amount = Math.max(...(twice.length ? twice : all));
+  }
+  // Datum: TT.MM.JJ(JJ) – nur plausible Werte (bis 1 Jahr zurück, nicht in der Zukunft)
+  let date = todayIso;
+  for (const m of text.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})\b/g)) {
+    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    const iso = `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+    const d = new Date(iso), diff = (new Date(todayIso) - d) / 864e5;
+    if (!isNaN(d) && +m[2] <= 12 && diff >= 0 && diff <= 366) { date = iso; break; }
+  }
+  // Händler: erste Zeile mit mindestens 3 Buchstaben und wenigen Ziffern
+  const merchant = (lines.find((l) => /[a-zäöü]{3}/i.test(l) && (l.match(/\d/g) || []).length < 4) || "").slice(0, 40);
+  const hit = RCPT_CATS.find(([, re]) => re.test(text));
+  return { amount, date, merchant, cat: hit ? hit[0] : "Sonstiges" };
+}
+/* RECEIPT-PARSER END */
+async function scanReceipt() {
+  const { Camera, TextRecognition } = window.Capacitor.Plugins;
+  try {
+    const photo = await Camera.takePhoto({ quality: 90, correctOrientation: true });
+    toast("Bon wird gelesen …");
+    const { text } = await TextRecognition.processImage({ path: photo.uri });
+    const r = parseReceipt(text || "", today());
+    form = { ...form, type: "out" }; setSeg("#typeSeg", "type", "out"); renderTiles();
+    if (!isNaN(r.amount)) $("#amount").value = (r.amount / 100).toFixed(2).replace(".", ",");
+    $("#date").value = r.date;
+    if (r.merchant) $("#note").value = r.merchant;
+    const tile = $(`#tiles [data-cat="${r.cat}"]`);
+    if (tile) tile.classList.add("sug");
+    toast(isNaN(r.amount) ? "Betrag nicht erkannt – bitte eintippen" : "Bon erkannt – prüfen und Kategorie antippen");
+  } catch (err) {
+    if (!/cancel/i.test(String(err && err.message))) toast("Bon konnte nicht gelesen werden");
+  }
+}
+const canScan = () => NATIVE && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera && window.Capacitor.Plugins.TextRecognition;
+$("#scanBtn").onclick = scanReceipt;
 
 /* ================= Budget, Export, Import ================= */
 $("#btnBudget").onclick = () => {
