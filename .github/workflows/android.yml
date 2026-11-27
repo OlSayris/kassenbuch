@@ -1,0 +1,82 @@
+# Baut bei jedem Push eine signierte Android-APK und veröffentlicht sie als GitHub-Release v<VERSION>.
+# Die Version kommt aus sw.js (const VERSION = "x.y.z"). Gibt es das Release schon, wird nichts gebaut.
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus sw.js lesen
+        id: v
+        run: |
+          V=$(grep -oP 'VERSION\s*=\s*"\K[^"]+' sw.js)
+          IFS=. read -r MA MI PA <<< "$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "code=$((MA*10000 + MI*100 + ${PA:-0}))" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" >/dev/null 2>&1; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Release existiert bereits
+        if: steps.v.outputs.skip == 'true'
+        run: echo "v${{ steps.v.outputs.version }} gibt es schon – VERSION in sw.js erhöhen für eine neue APK."
+
+      - uses: actions/setup-node@v4
+        if: steps.v.outputs.skip == 'false'
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        if: steps.v.outputs.skip == 'false'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Web-App bauen und in Android-Projekt kopieren
+        if: steps.v.outputs.skip == 'false'
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Signierte Release-APK bauen
+        if: steps.v.outputs.skip == 'false'
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ] || [ -z "$KS_PW" ]; then echo "::error::Secrets ANDROID_KEYSTORE_* fehlen (scripts/setup-signing.ps1 ausführen)"; exit 1; fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon \
+            -PappVersionCode=${{ steps.v.outputs.code }} \
+            -PappVersionName=${{ steps.v.outputs.version }} \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.p12" \
+            -Pandroid.injected.signing.store.password="$KS_PW" \
+            -Pandroid.injected.signing.key.alias=kassenbuch \
+            -Pandroid.injected.signing.key.password="$KS_PW"
+          rm -f "$RUNNER_TEMP/release.p12"
+
+      - name: Signatur prüfen und Release veröffentlichen
+        if: steps.v.outputs.skip == 'false'
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK"
+          OUT="kassenbuch-${{ steps.v.outputs.version }}.apk"
+          cp "$APK" "$OUT"
+          gh release create "v${{ steps.v.outputs.version }}" "$OUT" \
+            --title "Kassenbuch ${{ steps.v.outputs.version }}" \
+            --notes "Android-App: APK herunterladen und installieren. Deine Daten bleiben beim Update erhalten."
