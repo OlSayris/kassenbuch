@@ -1,0 +1,20 @@
+{
+  "name": "Kassenbuch",
+  "short_name": "Kassenbuch",
+  "description": "Einnahmen und Ausgaben im Monat im Blick",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230f766e'/%3E%3Ctext x='256' y='345' font-size='280' text-anchor='middle' fill='white' font-family='Arial,sans-serif' font-weight='700'%3E%E2%82%AC%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
