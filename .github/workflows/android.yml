@@ -75,7 +75,8 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs "$APK"
-          OUT="kassenbuch-${{ steps.v.outputs.version }}.apk"
+          # Fester Dateiname, damit .../releases/latest/download/kassenbuch.apk immer die neueste APK liefert
+          OUT="kassenbuch.apk"
           cp "$APK" "$OUT"
           gh release create "v${{ steps.v.outputs.version }}" "$OUT" \
             --title "Kassenbuch ${{ steps.v.outputs.version }}" \
