@@ -5,3 +5,4 @@ www/
 *.jks
 *.p12
 signing/
+tests/screenshots/
