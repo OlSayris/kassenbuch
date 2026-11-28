@@ -66,12 +66,18 @@
   #tabbar button.on::before { content:""; position:absolute; top:0; left:25%; right:25%; height:3px; border-radius:0 0 3px 3px; background:var(--acc); }
   .empty { display:block; text-align:center; padding:18px 8px; color:var(--mut); line-height:1.6; }
   .empty b { color:var(--acc); font-size:1.2rem; }
-  details summary { cursor:pointer; color:var(--acc); padding:12px 0 4px; min-height:44px; list-style:none; }
-  details summary::-webkit-details-marker { display:none; }
-  details summary::before { content:"▸ "; }
-  details[open] summary::before { content:"▾ "; }
-  .danger { color:var(--red) !important; display:block; margin:8px auto 0; }
-  .danger[hidden] { display:none; }
+  .danger { color:var(--red) !important; }
+  /* Erfassen: Häufigkeit (5 Stufen) kompakt, Speichern-Zeile klebt unten */
+  .seg.rep button { font-size:.8rem; padding:0 2px; }
+  .saverow { position:sticky; bottom:0; display:flex; gap:8px; background:var(--card); padding:12px 0 4px; margin-top:6px; }
+  .saverow input { flex:1; }
+  .saverow .btn { flex:1.2; min-height:50px; font-size:1.05rem; }
+  #editActions { margin-top:4px; }
+  #editActions[hidden] { display:none; }
+  /* Emoji-Auswahl (Kategorie-/Konto-Symbol) */
+  .emojis { display:grid; grid-template-columns:repeat(6,1fr); gap:4px; margin-top:6px; max-height:200px; overflow-y:auto; }
+  .emojis button { font-size:1.45rem; min-width:0; min-height:46px; border-radius:10px; background:var(--bg); }
+  .emojis button.sel { outline:2px solid var(--acc); background:var(--card); }
   .seg { display:flex; background:var(--bg); border-radius:12px; padding:3px; gap:3px; margin-bottom:10px; }
   .seg button { flex:1; border-radius:9px; font-size:.9rem; min-width:0; }
   .seg button.on { background:var(--card); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.15); }
@@ -155,6 +161,7 @@
   .tiles button span { font-size:1.5rem; }
   .tiles button:active { background:var(--line); }
   .tiles button.sel { outline:2px solid var(--acc); }
+  .tiles .newcat { background:none; border:2px dashed var(--line); color:var(--acc); }
   .shake { animation:shake .3s; border-color:var(--red); }
   @keyframes shake { 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
   /* ---------- Update-Banner, App-Sperre, Toast ---------- */
@@ -291,7 +298,9 @@
       <div class="row" style="justify-content:flex-start;flex-wrap:wrap">
         <button class="link" id="btnExport">Export (Backup)</button><button class="link" id="btnImport">Import</button>
         <button class="link" id="btnUpdate">Nach Updates suchen</button>
+        <button class="link" id="btnRestore">Sicherung wiederherstellen</button>
       </div>
+      <p class="mut">Die App sichert deine Daten automatisch: täglich und vor jedem Update (die letzten 10 Sicherungen).</p>
       <input type="file" id="file" accept="application/json,.json" hidden>
       <p class="mut" id="version">Version –</p>
     </section>
@@ -313,20 +322,22 @@
   <div class="chips" id="quick"></div>
   <div class="seg" id="typeSeg"><button data-type="out" class="on">Ausgabe</button><button data-type="in">Einnahme</button></div>
   <input id="amount" inputmode="decimal" placeholder="0,00 €" autocomplete="off" aria-label="Betrag">
-  <p class="mut" id="tileHint" style="margin-bottom:8px">Kategorie antippen – wird sofort gespeichert</p>
+  <div class="seg rep" id="repSeg" aria-label="Häufigkeit">
+    <button data-rep="none" class="on">Einmalig</button><button data-rep="monthly">Monatl.</button>
+    <button data-rep="quarterly">Viertelj.</button><button data-rep="halfyearly">Halbj.</button><button data-rep="yearly">Jährl.</button>
+  </div>
+  <input id="note" placeholder="Notiz (optional)" maxlength="80" aria-label="Notiz" style="margin-bottom:10px">
+  <p class="mut" style="margin-bottom:8px">Kategorie</p>
   <div class="tiles" id="tiles"></div>
-  <details id="opts">
-    <summary id="optsSum">Weitere Angaben</summary>
-    <div class="two" style="margin-top:10px">
-      <input id="date" type="date" aria-label="Datum">
-      <input id="note" placeholder="Notiz (optional)" maxlength="80" aria-label="Notiz">
-    </div>
-    <div class="seg" id="repSeg">
-      <button data-rep="none" class="on">Einmalig</button><button data-rep="monthly">Monatl.</button>
-      <button data-rep="quarterly">Viertelj.</button><button data-rep="yearly">Jährlich</button>
-    </div>
-  </details>
-  <button class="link danger" id="btnDelete" hidden>Buchung löschen</button>
+  <!-- Speichern bleibt unten sichtbar (auch wenn der Dialog scrollt) -->
+  <div class="saverow">
+    <input id="date" type="date" aria-label="Datum">
+    <button class="btn" id="btnSave">Speichern</button>
+  </div>
+  <div class="row" id="editActions" hidden>
+    <button class="link" id="btnCopy">Kopieren (neues Datum)</button>
+    <button class="link danger" id="btnDelete">Löschen</button>
+  </div>
 </dialog>
 
 <dialog id="ask"><p id="askText"></p><div id="askBtns"></div></dialog>
@@ -351,6 +362,7 @@
 <script src="js/ui.js"></script>
 <script src="js/accounts.js"></script>
 <script src="js/budget.js"></script>
+<script src="js/backup.js"></script>
 <script src="js/more.js"></script>
 </body>
 </html>

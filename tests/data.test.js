@@ -174,3 +174,25 @@ test("Weitere Konten: Migration behält gültige Konten, verwirft kaputte", () =
   assert.equal(st.accounts[1].icon, "🏦");
   assert.deepEqual(D.migrate({}).accounts, []);
 });
+
+test("Halbjährlich: alle 6 Monate", () => {
+  const e = mk({ repeat: "halfyearly", date: "2026-01-10" });
+  assert.equal(D.countUntil(e, m("2026-12")), 2);
+  assert.equal(D.occursIn(e, m("2026-07")), true);
+  assert.equal(D.occursIn(e, m("2026-04")), false);
+  assert.equal(D.isValid(e), true);
+  assert.equal(D.REP_LABEL.halfyearly, "halbjährlich");
+});
+
+test("Sicherungen: Namen, Aufräumen, Beschriftung, Zählung", () => {
+  assert.equal(D.backupName("2026-11-28"), "kassenbuch-2026-11-28.json");
+  assert.equal(D.backupName("2026-11-28", "vor-1.5.7"), "kassenbuch-2026-11-28-vor-1.5.7.json");
+  assert.equal(D.backupName("2026-11-28", "a/b c"), "kassenbuch-2026-11-28-abc.json");
+  const names = ["kassenbuch-2026-11-20.json", "kassenbuch-2026-11-28.json", "kassenbuch-2026-11-25-vor-1.5.6.json", "anderes.txt"];
+  assert.deepEqual(D.backupsToDelete(names, 2), ["kassenbuch-2026-11-20.json"]);
+  assert.equal(D.backupLabel("kassenbuch-2026-11-25-vor-1.5.6.json"), "25.11.2026, vor Update von 1.5.6");
+  assert.equal(D.backupLabel("kassenbuch-2026-11-28.json"), "28.11.2026, täglich");
+  assert.equal(D.entryCount(JSON.stringify({ entries: [1, 2, 3] })), 3);
+  assert.equal(D.entryCount("kaputt"), 0);
+  assert.equal(D.entryCount(null), 0);
+});

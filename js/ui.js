@@ -31,21 +31,7 @@ function save() {
       .catch(() => toast("Speichern fehlgeschlagen!"));
   } else if (!ok) toast("Speichern fehlgeschlagen – Speicher voll?");
 }
-async function loadFromFile() {
-  let raw;
-  try {
-    raw = (await PLUGINS.Filesystem.readFile({ path: DATA_FILE, directory: "DATA", encoding: "utf8" })).data;
-  } catch (err) {
-    if (/not exist|no such|not found/i.test(String(err && err.message))) {
-      if (state.entries.length) save();   // noch keine Datei: localStorage-Daten übernehmen
-      return;
-    }
-    fileBroken = true;
-    return toast("Daten-Datei nicht lesbar – bitte App neu starten. Es wurde nichts überschrieben.");
-  }
-  try { state = migrate(JSON.parse(raw)); }
-  catch { fileBroken = true; toast("Daten-Datei beschädigt – bitte Backup importieren. Es wurde nichts überschrieben."); }
-}
+// Laden beim Start und automatische Sicherungen: siehe js/backup.js (startupLoad)
 const setState = (patch) => { state = { ...state, ...patch }; save(); render(); };
 
 let cur = monthIdx(today());        // angezeigter Monat
@@ -82,15 +68,31 @@ function inputBox(title, fields) {
     const d = $("#inp");
     let result = null;
     $("#inpTitle").textContent = title;
-    $("#inpFields").innerHTML = fields.map((f) => `<label class="mut">${esc(f.label)}<input value="${esc(f.value ?? "")}"`
-      + `${f.mode ? ` inputmode="${f.mode}"` : ""}${f.type ? ` type="${f.type}"` : ""} autocomplete="off"></label>`).join("");
+    $("#inpFields").innerHTML = fields.map((f) => (f.type === "emoji" ? emojiField(f)
+      : `<label class="mut">${esc(f.label)}<input value="${esc(f.value ?? "")}"`
+        + `${f.mode ? ` inputmode="${f.mode}"` : ""}${f.type ? ` type="${f.type}"` : ""} autocomplete="off"></label>`)).join("");
+    $("#inpFields").onclick = (e) => {   // Emoji antippen = auswählen
+      const b = e.target.closest(".emojis button"); if (!b) return;
+      const box = b.closest(".emojis");
+      box.previousElementSibling.value = b.textContent;
+      box.querySelectorAll("button").forEach((x) => x.classList.toggle("sel", x === b));
+    };
     $("#inpForm").onsubmit = (e) => { e.preventDefault(); result = [...d.querySelectorAll("input")].map((x) => x.value.trim()); d.close(); };
     $("#inpCancel").onclick = () => d.close();
     d.onclose = () => resolve(result);
     d.showModal();
-    const first = d.querySelector("input");
+    const first = d.querySelector("input:not([type=hidden])");
     if (first) { first.focus(); first.select(); }
   });
+}
+// Auswahl für Kategorie-/Konto-Symbole: antippen statt tippen (Handy-Tastaturen bieten Emojis oft nicht an)
+const EMOJIS = ["🏠", "🛒", "🍞", "🚗", "⛽", "🚌", "🚆", "✈️", "🎉", "🍽️", "☕", "🍺", "🎬", "🎮", "📺", "📱", "💻", "👕",
+  "💊", "🏥", "🦷", "💇", "🐶", "🐱", "👶", "🎓", "📚", "🎁", "💡", "💧", "🔥", "🛡️", "🔧", "🧹", "🏋️", "⚽", "🎵", "🌴",
+  "💼", "🧓", "🧰", "↩️", "💶", "💳", "🏦", "🐷", "💰", "📈", "🧾", "📦", "🏷️", "❤️"];
+function emojiField(f) {
+  const v = f.value || EMOJIS[0], list = EMOJIS.includes(v) ? EMOJIS : [v, ...EMOJIS];
+  return `<p class="mut" style="margin-top:10px">${esc(f.label)}</p><input type="hidden" value="${esc(v)}">`
+    + `<div class="emojis" role="listbox">${list.map((e) => `<button type="button" class="${e === v ? "sel" : ""}">${e}</button>`).join("")}</div>`;
 }
 const shake = (el) => { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); el.focus(); };
 function setSeg(sel, attr, value) {
@@ -291,37 +293,48 @@ $("#main").addEventListener("touchend", (e) => {
 });
 
 /* ================= Erfassen & Bearbeiten ================= */
+// Kategorie antippen = nur auswählen; gespeichert wird erst mit „Speichern“.
 function renderTiles(selected) {
+  form = { ...form, cat: selected || null };
   $("#tiles").innerHTML = state.cats[form.type].map(([n, i], idx) =>
-    `<button data-i="${idx}" class="${n === selected ? "sel" : ""}"><span>${esc(i)}</span>${esc(n)}</button>`).join("");
+    `<button data-i="${idx}" class="${n === selected ? "sel" : ""}" aria-pressed="${n === selected}"><span>${esc(i)}</span>${esc(n)}</button>`).join("")
+    + `<button class="newcat" aria-label="Neue Kategorie anlegen"><span>＋</span>Neu</button>`;
 }
-/** edit = {id, t} zum Bearbeiten, sonst neue Buchung. Bearbeitungsstatus wird bei jedem Öffnen neu gesetzt. */
-function openSheet(edit) {
+/** Neue Kategorie direkt beim Erfassen anlegen (vor „Sonstiges“) und gleich auswählen */
+async function quickNewCategory() {
+  const r = await inputBox(form.type === "in" ? "Neue Einnahme-Kategorie" : "Neue Ausgabe-Kategorie",
+    [{ label: "Name", value: "" }, { label: "Symbol", value: "🏷️", type: "emoji" }]);
+  if (!r) return;
+  const name = r[0].slice(0, 30);
+  if (!name) return toast("Name darf nicht leer sein");
+  const list = state.cats[form.type];
+  if (!list.some(([n]) => n === name)) {
+    const at = list.findIndex(([n]) => n === "Sonstiges");
+    state = { ...state, cats: { ...state.cats, [form.type]: [...list.slice(0, at), [name, r[1] || "🏷️"], ...list.slice(at)] } };
+    save();
+  }
+  renderTiles(name);
+}
+/** edit = {id, t}: Buchung bearbeiten. copy = Buchung als Vorlage für eine neue (Datum heute). Sonst leer. */
+function openSheet(edit, copy) {
   const e = edit && state.entries.find((x) => x.id === edit.id);
-  form = e ? { type: e.type, repeat: e.repeat, edit } : { type: "out", repeat: "none", edit: null };
+  const src = e || copy || null;
+  form = { type: src ? src.type : "out", repeat: e ? e.repeat : "none", edit: e ? edit : null };
   setSeg("#typeSeg", "type", form.type); setSeg("#repSeg", "rep", form.repeat);
-  renderTiles(e ? e.cat : null);
-  $("#sheetTitle").textContent = e ? "Buchung bearbeiten" : "Neue Buchung";
-  $("#amount").value = e ? fmtIn(e.amount) : "";
-  $("#note").value = e ? e.note : "";
-  $("#date").value = e ? occDay(e, edit.t) : (monthIdx(today()) === cur ? today() : toIso(cur, 1));
+  renderTiles(src ? src.cat : null);
+  $("#sheetTitle").textContent = e ? "Buchung bearbeiten" : copy ? "Kopie – Datum prüfen und speichern" : "Neue Buchung";
+  $("#amount").value = src ? fmtIn(src.amount) : "";
+  $("#note").value = src ? src.note : "";
+  $("#date").value = e ? occDay(e, edit.t) : copy ? today() : (monthIdx(today()) === cur ? today() : toIso(cur, 1));
   form = { ...form, shownDate: $("#date").value };   // um zu erkennen, ob das Datum geändert wurde
-  renderQuick(!e);
-  $("#opts").open = false;                 // Datum, Notiz, Wiederholung eingeklappt; Zusammenfassung zeigt den Stand
-  updateOptsSummary();
-  $("#btnDelete").hidden = !e;
-  $("#tileHint").textContent = e ? "Kategorie antippen – Änderung wird gespeichert" : "Kategorie antippen – wird sofort gespeichert";
-  $("#sheet").showModal();
-  if (!e) $("#amount").focus();
+  renderQuick(!src);
+  $("#editActions").hidden = !e;
+  $("#btnSave").textContent = e ? "Änderung speichern" : "Speichern";
+  if (!$("#sheet").open) $("#sheet").showModal();
+  $("#sheet").scrollTop = 0;
+  if (!src) $("#amount").focus();
 }
-/** „Weitere Angaben“ zeigt eingeklappt, was gerade eingestellt ist – z. B. „Heute · einmalig“ */
-function updateOptsSummary() {
-  const d = $("#date").value, note = $("#note").value.trim();
-  const day = !d || d === today() ? "Heute" : new Date(d + "T12:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const rep = form.repeat === "none" ? "einmalig" : REP_LABEL[form.repeat];
-  $("#optsSum").textContent = `${day} · ${rep}${note ? " · " + note : ""}  (ändern)`;
-}
-["#date", "#note"].forEach((s) => $(s).addEventListener("input", updateOptsSummary));
+/** Häufige Buchungen als Vorschlag: Antippen füllt das Formular (gespeichert wird mit „Speichern“) */
 function renderQuick(show) {
   const list = show ? quickSuggestions(state.entries, today()) : [];
   $("#quick").innerHTML = list.map((q, i) => `<button data-i="${i}">${esc(catIcon(q.type, q.cat))} ${esc(q.note || q.cat)} `
@@ -329,7 +342,10 @@ function renderQuick(show) {
   $("#quick").onclick = (ev) => {
     const b = ev.target.closest("button"); if (!b) return;
     const q = list[+b.dataset.i];
-    addEntry({ type: q.type, amount: q.amount, cat: q.cat, note: q.note, date: $("#date").value || today(), repeat: "none" });
+    form = { ...form, type: q.type }; setSeg("#typeSeg", "type", q.type);
+    renderTiles(q.cat);
+    $("#amount").value = fmtIn(q.amount);
+    $("#note").value = q.note;
   };
 }
 function addEntry(p) {
@@ -347,13 +363,22 @@ $("#typeSeg").onclick = (e) => {
 };
 $("#repSeg").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  form = { ...form, repeat: b.dataset.rep }; setSeg("#repSeg", "rep", form.repeat); updateOptsSummary();
+  form = { ...form, repeat: b.dataset.rep }; setSeg("#repSeg", "rep", form.repeat);
 };
-$("#tiles").onclick = async (ev) => {
+$("#tiles").onclick = (ev) => {   // nur auswählen (bzw. „＋ Neu“)
+  if (ev.target.closest(".newcat")) return quickNewCategory();
   const b = ev.target.closest("button[data-i]"); if (!b) return;
+  renderTiles(state.cats[form.type][+b.dataset.i][0]);
+};
+$("#btnCopy").onclick = () => {   // Kopie als neue einmalige Buchung, Datum heute
+  const e = form.edit && state.entries.find((x) => x.id === form.edit.id);
+  if (e) openSheet(null, { type: e.type, amount: e.amount, cat: e.cat, note: e.note });
+};
+$("#btnSave").onclick = async () => {
   const amount = parseAmount($("#amount").value), date = $("#date").value || today();
   if (isNaN(amount)) return shake($("#amount"));
-  const patch = { type: form.type, amount, cat: state.cats[form.type][+b.dataset.i][0], note: $("#note").value.trim(), date, repeat: form.repeat };
+  if (!form.cat) { toast("Bitte eine Kategorie wählen"); return shake($("#tiles")); }
+  const patch = { type: form.type, amount, cat: form.cat, note: $("#note").value.trim(), date, repeat: form.repeat };
   if (!form.edit) return addEntry(patch);
   const { id, t } = form.edit, e = state.entries.find((x) => x.id === id);
   if (!e) return $("#sheet").close();

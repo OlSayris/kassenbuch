@@ -4,8 +4,8 @@
 
 const SCHEMA = 3;
 const KONTOABGLEICH = "Kontoabgleich";
-const STEP = { none: 0, monthly: 1, quarterly: 3, yearly: 12 };   // Abstand in Monaten
-const REP_LABEL = { monthly: "monatlich", quarterly: "vierteljährlich", yearly: "jährlich" };
+const STEP = { none: 0, monthly: 1, quarterly: 3, halfyearly: 6, yearly: 12 };   // Abstand in Monaten
+const REP_LABEL = { monthly: "monatlich", quarterly: "vierteljährlich", halfyearly: "halbjährlich", yearly: "jährlich" };
 const DEFAULT_CATS = {
   out: [["Wohnen", "🏠"], ["Lebensmittel", "🛒"], ["Mobilität", "🚗"], ["Freizeit", "🎉"], ["Abos", "📺"],
         ["Versicherung", "🛡️"], ["Sonstiges", "📦"]],
@@ -233,8 +233,30 @@ function deleteCat(st, type, name) {
     entries: st.entries.map((e) => (e.type === type && e.cat === name ? { ...e, cat: "Sonstiges" } : e)) };
 }
 
+/* ---------- Sicherungen ---------- */
+/** Dateiname einer Sicherung, z. B. kassenbuch-2026-11-28.json oder kassenbuch-2026-11-28-vor-1.5.7.json */
+const backupName = (isoDate, tag) => `kassenbuch-${isoDate}${tag ? "-" + String(tag).replace(/[^\w.-]/g, "") : ""}.json`;
+const BACKUP_RE = /^kassenbuch-(\d{4}-\d{2}-\d{2})(?:-(.+))?\.json$/;
+/** Welche Sicherungen löschen, damit nur die neuesten `keep` übrig bleiben (Namen sortieren sich nach Datum) */
+const backupsToDelete = (names, keep) => names.filter((n) => BACKUP_RE.test(n)).sort().reverse().slice(keep);
+/** Lesbare Beschriftung: „28.11.2026, vor Update von 1.5.7“ */
+function backupLabel(name) {
+  const m = BACKUP_RE.exec(name);
+  if (!m) return name;
+  const [y, mo, d] = m[1].split("-");
+  const tag = !m[2] ? "täglich" : m[2].startsWith("vor-wieder") ? "vor Wiederherstellung" : m[2].startsWith("vor-import") ? "vor Import"
+    : m[2].startsWith("vor-") ? "vor Update von " + m[2].slice(4) : m[2];
+  return `${d}.${mo}.${y}, ${tag}`;
+}
+/** Anzahl Buchungen in gespeicherten Rohdaten (ohne Umwandlung), 0 bei unlesbaren Daten */
+function entryCount(raw) {
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p.length : (p && Array.isArray(p.entries) ? p.entries.length : 0); }
+  catch { return 0; }
+}
+
 if (typeof module !== "undefined") {
   module.exports = { SCHEMA, KONTOABGLEICH, STEP, DEFAULT_CATS, monthIdx, ymOf, toIso, lastDay, addDays, parseAmount,
     parseSigned, migrate, migrateEntry, isValid, countUntil, occursIn, occDay, monthData, catTotals, balanceAt,
-    reconcileEntry, applyEdit, deleteOcc, quickSuggestions, search, renameCat, deleteCat };
+    reconcileEntry, applyEdit, deleteOcc, quickSuggestions, search, renameCat, deleteCat, backupName, backupsToDelete,
+    backupLabel, entryCount, REP_LABEL };
 }

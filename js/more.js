@@ -57,8 +57,8 @@ $("#catList").onclick = async (e) => {
     return setState(deleteCat(state, catType, name));
   }
   // Bearbeiten: bisheriger Name und Symbol stehen schon im Feld („Sonstiges“ behält seinen Namen)
-  const fields = name === "Sonstiges" ? [{ label: "Symbol (Emoji)", value: icon }]
-    : [{ label: "Name", value: name }, { label: "Symbol (Emoji)", value: icon }];
+  const fields = name === "Sonstiges" ? [{ label: "Symbol", value: icon, type: "emoji" }]
+    : [{ label: "Name", value: name }, { label: "Symbol", value: icon, type: "emoji" }];
   const r = await inputBox("Kategorie bearbeiten", fields);
   if (!r) return;
   const [newName, newIcon] = name === "Sonstiges" ? [name, r[0]] : r;
@@ -67,7 +67,7 @@ $("#catList").onclick = async (e) => {
   setState(next);
 };
 $("#btnCatAdd").onclick = async () => {
-  const r = await inputBox("Neue Kategorie", [{ label: "Name", value: "" }, { label: "Symbol (Emoji)", value: "🏷️" }]);
+  const r = await inputBox("Neue Kategorie", [{ label: "Name", value: "" }, { label: "Symbol", value: "🏷️", type: "emoji" }]);
   if (!r) return;
   const name = r[0].slice(0, 30), icon = (r[1] || "🏷️").slice(0, 8);
   if (!name) return toast("Name darf nicht leer sein");
@@ -179,6 +179,7 @@ $("#file").onchange = async (e) => {
     const dropped = total - data.entries.length;
     if (!confirm(`${data.entries.length} Buchungen importieren?` + (dropped ? `\nAchtung: ${dropped} fehlerhafte Einträge werden übersprungen.` : "")
       + `\nDie aktuellen ${state.entries.length} Buchungen werden ersetzt (vorher besser exportieren).`)) return;
+    await backup(currentJson(), "vor-import");   // aktuellen Stand sichern, bevor er ersetzt wird
     state = { ...data, lock: state.lock };   // Sperr-Einstellung des Geräts behalten
     save(); render(); toast("Import erfolgreich");
   } catch { toast("Datei konnte nicht gelesen werden"); }
@@ -250,7 +251,7 @@ function initUpdates() {
 
 /* ================= Start ================= */
 (async () => {
-  if (PLUGINS.Filesystem) await loadFromFile();   // erst Datei laden, dann Sperre prüfen, dann anzeigen
+  await startupLoad();   // erst laden (mit Sicherung vor Updates), dann Sperre prüfen, dann anzeigen
   if (state.lock && PLUGINS.NativeBiometric) showLock();
   render();
   initUpdates();

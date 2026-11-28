@@ -100,7 +100,7 @@ $("#accList").onclick = async (e) => {
     return;
   }
   if (what !== "ren") return;
-  const r = await inputBox("Konto bearbeiten", [{ label: "Name", value: a.name }, { label: "Symbol (Emoji)", value: a.icon }]);
+  const r = await inputBox("Konto bearbeiten", [{ label: "Name", value: a.name }, { label: "Symbol", value: a.icon, type: "emoji" }]);
   if (!r) return;
   const name = r[0].slice(0, 30);
   if (!name) return toast("Name darf nicht leer sein");
@@ -109,7 +109,7 @@ $("#accList").onclick = async (e) => {
 
 $("#btnAccAdd").onclick = async () => {
   const r = await inputBox("Neues Konto", [{ label: "Name (z. B. Sparbuch)", value: "" },
-    { label: "Aktueller Stand in €", value: "", mode: "decimal" }, { label: "Symbol (Emoji)", value: "🏦" }]);
+    { label: "Aktueller Stand in €", value: "", mode: "decimal" }, { label: "Symbol", value: "🏦", type: "emoji" }]);
   if (!r) return;
   const name = r[0].slice(0, 30), balance = parseSigned(r[1]), icon = (r[2] || "🏦").slice(0, 8);
   if (!name) return toast("Name darf nicht leer sein");

@@ -18,13 +18,15 @@ def step(name):
     print(f"  ✓ {name}")
 
 
-def add_entry(page, amount, category, note=""):
+def add_entry(page, amount, category, note="", repeat=None):
     page.click("#fab")
     page.fill("#amount", amount)
+    if repeat:
+        page.click(f"#repSeg [data-rep={repeat}]")
     if note:
-        page.click("#optsSum")                       # „Weitere Angaben“ aufklappen
-        page.fill("#note", note)
-    page.click(f"#tiles button:has-text('{category}')")
+        page.fill("#note", note)                     # Notizfeld ist direkt sichtbar
+    page.click(f"#tiles button:has-text('{category}')")   # Kategorie nur auswählen …
+    page.click("#btnSave")                           # … gespeichert wird mit dem Knopf
 
 
 with sync_playwright() as p:
@@ -46,16 +48,30 @@ with sync_playwright() as p:
     step("Ausgabe erfassen (Betrag + Kachel)")
 
     page.click("#fab")
+    page.fill("#amount", "9")
+    page.click("#tiles button:has-text('Freizeit')")
+    expect(page.locator("#sheet")).to_have_attribute("open", "")     # Kachel allein speichert nicht
+    page.keyboard.press("Escape")
+    expect(page.locator("#list li[data-id]")).to_have_count(1)
+    page.click("#fab")
+    page.fill("#amount", "9")
+    page.click("#btnSave")
+    expect(page.locator("#sheet")).to_have_attribute("open", "")     # ohne Kategorie kein Speichern
+    page.keyboard.press("Escape")
+    step("Kategorie wählt nur aus, Speichern-Knopf nötig, Kategorie Pflicht")
+
+    page.click("#fab")
     page.click("#typeSeg [data-type=in]")
     page.fill("#amount", "2.500")
     page.click("#tiles button:has-text('Gehalt')")
+    page.click("#btnSave")
     expect(page.locator("#saldo")).to_have_text("2.487,50 €")
     step("Einnahme erfassen, „Übrig“ stimmt (Tausenderpunkt)")
 
     page.click("#list li:has-text('Bäcker')")
     expect(page.locator("#sheetTitle")).to_have_text("Buchung bearbeiten")
     page.fill("#amount", "15")
-    page.click("#tiles button.sel")
+    page.click("#btnSave")
     expect(page.locator("#sumOut")).to_have_text("15,00 €")
     step("Buchung bearbeiten")
 
@@ -64,15 +80,39 @@ with sync_playwright() as p:
     expect(page.locator("#list li:has-text('Bäcker')")).to_have_count(0)
     step("Buchung löschen (im Bearbeiten-Dialog)")
 
-    # Tastatur-Simulation: bei 480 px Höhe müssen alle Kacheln sichtbar sein
+    # Tastatur-Simulation: bei 480 px Höhe muss „Speichern“ sichtbar bleiben (klebt unten im Dialog)
     page.set_viewport_size({"width": 360, "height": 480})
     page.click("#fab")
-    hidden = page.evaluate("[...document.querySelectorAll('#tiles button')].filter(b => b.getBoundingClientRect().bottom > innerHeight).length")
-    assert hidden == 0, f"{hidden} Kategorie-Kacheln unter der Tastatur verdeckt"
+    bottom = page.evaluate("document.querySelector('#btnSave').getBoundingClientRect().bottom")
+    assert bottom <= 480, f"Speichern-Knopf verdeckt (unten bei {bottom}px)"
     page.screenshot(path=os.path.join(SHOTS, "erfassen-tastatur.png"))
     page.keyboard.press("Escape")
     page.set_viewport_size({"width": 360, "height": 780})
-    step("Alle Kategorien bei offener Tastatur sichtbar")
+    step("Speichern-Knopf bei offener Tastatur sichtbar")
+
+    add_entry(page, "60", "Versicherung", "Haftpflicht", repeat="halfyearly")
+    expect(page.locator("#list li:has-text('Haftpflicht')")).to_contain_text("halbjährlich")
+    step("Halbjährliche Buchung")
+
+    page.click("#list li:has-text('Haftpflicht')")
+    page.click("#btnCopy")
+    expect(page.locator("#sheetTitle")).to_contain_text("Kopie")
+    expect(page.locator("#amount")).to_have_value("60,00")
+    expect(page.locator("#tiles button.sel")).to_contain_text("Versicherung")
+    page.click("#btnSave")
+    expect(page.locator("#list li:has-text('Haftpflicht')")).to_have_count(2)
+    step("Buchung kopieren")
+
+    page.click("#fab")
+    page.fill("#amount", "4,20")
+    page.click("#tiles .newcat")
+    page.fill("#inpFields input:not([type=hidden])", "Kaffee")
+    page.click("#inpFields .emojis button:has-text('☕')")
+    page.click("#inpForm button[type=submit]")
+    expect(page.locator("#tiles button.sel")).to_contain_text("Kaffee")
+    page.click("#btnSave")
+    expect(page.locator("#list li:has-text('Kaffee')")).to_contain_text("☕")
+    step("Neue Kategorie direkt beim Erfassen, Symbol per Antippen")
 
     for view, title in [("year", "Jahr"), ("budget", "Budget"), ("accounts", "Konten"), ("month", "")]:
         page.click(f"#tabbar [data-view={view}]")
@@ -102,8 +142,17 @@ with sync_playwright() as p:
 
     page.reload()
     page.wait_for_load_state("networkidle")
-    expect(page.locator("#list li[data-id]")).to_have_count(2)
+    expect(page.locator("#list li[data-id]")).to_have_count(5)
     step("Daten nach Neuladen erhalten")
+
+    # Datenverlust simulieren: Hauptdaten weg → App stellt die automatische Sicherung wieder her
+    backups = page.evaluate("Object.keys(JSON.parse(localStorage.getItem('kassenbuch-backups') || '{}'))")
+    assert backups, "Keine automatische Sicherung angelegt"
+    page.evaluate("localStorage.removeItem('kassenbuch')")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#list li[data-id]").first).to_be_visible()
+    step(f"Automatische Sicherung vorhanden ({len(backups)}) und Wiederherstellung nach Datenverlust")
 
     browser.close()
 
