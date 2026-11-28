@@ -232,15 +232,18 @@ $("#file").onchange = async (e) => {
 };
 
 /* ================= Updates ================= */
-const APK_URL = `https://github.com/${REPO}/releases/latest/download/kassenbuch.apk`;
+// Fallback: feste Kopie der neuesten APK; normalerweise wird die versionierte Datei geladen (kassenbuch-1.5.4.apk)
+let apkUrl = `https://github.com/${REPO}/releases/latest/download/kassenbuch.apk`;
 const newer = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number);
   for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 async function checkApkUpdate(manual) {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    const latest = String((await r.json()).tag_name || "").replace(/^v/, "");
+    const rel = await r.json(), latest = String(rel.tag_name || "").replace(/^v/, "");
     if (latest && newer(latest, window.APP_VERSION)) {
+      const asset = (rel.assets || []).find((a) => a.name === `kassenbuch-${latest}.apk`);
+      if (asset) apkUrl = asset.browser_download_url;
       $("#updText").textContent = `Neue Version ${latest} verfügbar`;
       $("#updBar").hidden = false;
     } else if (manual) toast(`Du hast die neueste Version (${window.APP_VERSION})`);
@@ -248,7 +251,7 @@ async function checkApkUpdate(manual) {
 }
 $("#updBtn").onclick = () => {   // Capacitor öffnet externe Links im System-Browser → APK laden → installieren
   toast("Download startet – danach die APK öffnen und „Aktualisieren“ tippen");
-  setTimeout(() => { location.href = APK_URL; }, 600);
+  setTimeout(() => { location.href = apkUrl; }, 600);
 };
 let swReg = null;
 async function checkWebUpdate() {

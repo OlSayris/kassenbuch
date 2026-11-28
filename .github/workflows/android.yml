@@ -75,9 +75,11 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs "$APK"
-          # Fester Dateiname, damit .../releases/latest/download/kassenbuch.apk immer die neueste APK liefert
-          OUT="kassenbuch.apk"
-          cp "$APK" "$OUT"
-          gh release create "v${{ steps.v.outputs.version }}" "$OUT" \
-            --title "Kassenbuch ${{ steps.v.outputs.version }}" \
-            --notes "Android-App: APK herunterladen und installieren. Deine Daten bleiben beim Update erhalten."
+          # kassenbuch-<Version>.apk = eindeutiger Dateiname je Version (App-Update lädt diese Datei).
+          # kassenbuch.apk = feste Kopie für .../releases/latest/download/kassenbuch.apk (QR-Code, fester Link).
+          V="${{ steps.v.outputs.version }}"
+          cp "$APK" "kassenbuch-$V.apk"
+          cp "$APK" "kassenbuch.apk"
+          gh release create "v$V" "kassenbuch-$V.apk" "kassenbuch.apk" \
+            --title "Kassenbuch $V" \
+            --notes "Android-App: kassenbuch-$V.apk herunterladen und installieren. Deine Daten bleiben beim Update erhalten."
