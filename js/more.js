@@ -27,17 +27,6 @@ $("#sList").onclick = (e) => {          // Treffer antippen → Monat öffnen
   cur = +li.dataset.t; switchView("month");
 };
 
-/* ================= Konten-Reiter: Kassenbuch-Kontostand (Rest in js/accounts.js) ================= */
-function renderCashSection() {
-  const bal = balanceAt(state, today());
-  $("#todayBal").textContent = bal === null ? "Kassenstand heute: – (vor dem Stichtag des Anfangsbestands)"
-    : `Kassenstand heute laut App: ${fmt(bal)}`;
-  const o = state.opening;
-  if (document.activeElement !== $("#openAmt")) $("#openAmt").value = o ? fmtIn(o.amount) : "";
-  $("#openDate").value = o ? o.date : $("#openDate").value || today();
-  $("#btnOpenDel").hidden = !o;
-}
-
 /* ================= Einstellungen (Zahnrad) ================= */
 let catType = "out";
 function renderSettings() {
@@ -49,42 +38,6 @@ function renderSettings() {
     ? "Beim Öffnen und nach 30 s im Hintergrund wird nach Fingerabdruck oder Display-PIN gefragt. Die Daten selbst sind nicht verschlüsselt."
     : "Nur in der Android-App verfügbar.";
 }
-
-/* ---------- Kontoabgleich & Anfangsbestand ---------- */
-$("#btnReconcile").onclick = async () => {
-  const real = parseSigned($("#realBal").value);
-  if (isNaN(real)) return shake($("#realBal"));
-  if (!state.opening && !state.entries.length) {
-    setState({ opening: { amount: real, date: today() } });
-    $("#realBal").value = "";
-    return toast("Als Anfangsbestand ab heute gespeichert");
-  }
-  if (!state.opening) {
-    const how = await ask(`Es gibt noch keinen Anfangsbestand. Wie soll ${fmt(real)} verwendet werden?`,
-      [["book", "Differenz als Kontoabgleich buchen"], ["open", "Als Anfangsbestand (heute) speichern"]]);
-    if (!how) return;
-    if (how === "open") { $("#realBal").value = ""; setState({ opening: { amount: real - todaysBookings(), date: today() } }); return toast("Anfangsbestand gespeichert"); }
-  }
-  if (balanceAt(state, today()) === null) return toast("Stichtag des Anfangsbestands liegt in der Zukunft – bitte zuerst korrigieren");
-  const entry = reconcileEntry(state, real, today());
-  if (!entry) return toast("Stimmt überein – keine Differenz");
-  const label = entry.type === "in" ? "Einnahme" : "Ausgabe";
-  if (!confirm(`Differenz ${entry.type === "in" ? "+" : "−"}${fmt(entry.amount)} als ${label} „${KONTOABGLEICH}“ (Sonstiges) buchen?`)) return;
-  $("#realBal").value = "";
-  setState({ entries: [...state.entries, entry] });
-  toast(`Kontoabgleich gebucht: ${label} ${fmt(entry.amount)}`);
-};
-/** Saldo der heute schon gebuchten Beträge (damit ein Anfangsbestand „heute“ zum echten Kontostand passt) */
-const todaysBookings = () => monthData(state.entries, monthIdx(today())).items
-  .filter((e) => e.day === today()).reduce((s, e) => s + (e.type === "in" ? e.amount : -e.amount), 0);
-$("#btnOpening").onclick = () => {
-  const amount = parseSigned($("#openAmt").value), date = $("#openDate").value;
-  if (isNaN(amount)) return shake($("#openAmt"));
-  if (!date) return shake($("#openDate"));
-  setState({ opening: { amount, date } });
-  toast("Anfangsbestand gespeichert");
-};
-$("#btnOpenDel").onclick = () => { if (confirm("Anfangsbestand entfernen?")) setState({ opening: null }); };
 
 /* ---------- Kategorien ---------- */
 function renderCatList() {

@@ -83,7 +83,7 @@ function inputBox(title, fields) {
     let result = null;
     $("#inpTitle").textContent = title;
     $("#inpFields").innerHTML = fields.map((f) => `<label class="mut">${esc(f.label)}<input value="${esc(f.value ?? "")}"`
-      + `${f.mode ? ` inputmode="${f.mode}"` : ""} autocomplete="off"></label>`).join("");
+      + `${f.mode ? ` inputmode="${f.mode}"` : ""}${f.type ? ` type="${f.type}"` : ""} autocomplete="off"></label>`).join("");
     $("#inpForm").onsubmit = (e) => { e.preventDefault(); result = [...d.querySelectorAll("input")].map((x) => x.value.trim()); d.close(); };
     $("#inpCancel").onclick = () => d.close();
     d.onclose = () => resolve(result);
@@ -107,8 +107,10 @@ function render() {
   ["month", "year", "search", "budget", "accounts", "settings"].forEach((v) => { $(`#${v}View`).hidden = view !== v; });
   const nav = view === "month" || view === "year";
   $("#prev").hidden = !nav; $("#next").hidden = !nav;
-  $("#fab").hidden = view === "accounts" || view === "settings" || view === "budget";
+  $("#fab").hidden = view !== "month" && view !== "year";
   $("#gear").classList.toggle("on", view === "settings");
+  $("#searchBtn").classList.toggle("on", view === "search");
+  setSeg("#tabbar", "view", view);
   if (view === "month") renderMonth();
   else if (view === "year") renderYear();
   else if (view === "search") renderSearch();
@@ -125,9 +127,6 @@ function renderMonth() {
   $("#sumOut").textContent = fmt(md.sumOut);
   $("#cmpOut").innerHTML = prev.sumOut ? "vs. Vormonat" + cmpHtml(pct(md.sumOut, prev.sumOut)) : "";
   setMoney("#saldo", md.sumIn - md.sumOut);
-  setMoney("#stand", balanceAt(state, lastDay(cur)));
-  const isNow = cur === monthIdx(today()), bal = isNow ? balanceAt(state, today()) : null;
-  $("#standToday").textContent = isNow && bal !== null ? `Kassenstand heute: ${fmt(bal)}` : "";
   renderBudget(md.sumOut);
   renderCatBars($("#cats"), catTotals(md.items), catTotals(prev.items), true, "Ausgaben nach Kategorie · Tippen = Budget planen");
   renderList($("#list"), md.items, true);
@@ -159,22 +158,26 @@ function renderCatBars(el, totals, prevTotals, withBudget, title) {
   // Tippen auf eine Kategorie → Reiter „Budget“
   el.onclick = withBudget ? (e) => { if (e.target.closest("button[data-i]")) switchView("budget"); } : null;
 }
-/** Buchungsliste. editable: Tippen = bearbeiten, ✕ = löschen; sonst Tippen = zum Monat springen */
+/** Buchungsliste. editable (Monat): Tippen = bearbeiten/löschen; sonst (Suche): Tippen = zum Monat springen */
 function renderList(el, items, editable) {
   el.innerHTML = items.length ? items.map((e) => {
     const rep = e.repeat !== "none" ? ` · ↻ ${REP_LABEL[e.repeat]}` : "";
     const date = new Date(e.day).toLocaleDateString("de-DE", editable ? { day: "2-digit", month: "2-digit" } : { dateStyle: "medium" });
     return `<li class="tap" data-id="${esc(e.id)}" data-t="${e.t}"><span class="ico">${esc(catIcon(e.type, e.cat))}</span>`
       + `<div class="txt"><div>${esc(e.note || e.cat)}</div><div class="mut">${date} · ${esc(e.cat)}${rep}</div></div>`
-      + `<span class="amt ${e.type === "in" ? "in" : ""}">${e.type === "in" ? "+" : "−"}${fmt(e.amount)}</span>`
-      + (editable ? `<button class="del" aria-label="Löschen">✕</button>` : "") + `</li>`;
-  }).join("") : `<li class="mut">Keine Buchungen.</li>`;
+      + `<span class="amt ${e.type === "in" ? "in" : ""}">${e.type === "in" ? "+" : "−"}${fmt(e.amount)}</span></li>`;
+  }).join("") : editable
+    ? `<li class="empty">Noch keine Buchungen in diesem Monat.<br>Tippe unten rechts auf <b>+</b>, um eine Ausgabe oder Einnahme zu erfassen.</li>`
+    : `<li class="empty">Keine Treffer.</li>`;
 }
-$("#list").addEventListener("click", async (ev) => {
+$("#list").addEventListener("click", (ev) => {
   const li = ev.target.closest("li[data-id]"); if (!li) return;
-  const id = li.dataset.id, t = +li.dataset.t, e = state.entries.find((x) => x.id === id);
-  if (!e) return;
-  if (!ev.target.closest(".del")) return openSheet({ id, t });
+  openSheet({ id: li.dataset.id, t: +li.dataset.t });
+});
+/** Löschen aus dem Bearbeiten-Dialog; bei Serien wählen: nur dieser Monat / ab jetzt / alle */
+async function deleteEditing() {
+  const { id, t } = form.edit, e = state.entries.find((x) => x.id === id);
+  if (!e) return $("#sheet").close();
   const name = `„${e.note || e.cat}“ (${fmt(e.amount)})`;
   let scope = "all";
   if (e.repeat === "none") { if (!confirm(`${name} wirklich löschen?`)) return; }
@@ -183,9 +186,11 @@ $("#list").addEventListener("click", async (ev) => {
       [["this", "Nur in diesem Monat"], ["future", "Ab diesem Monat"], ["all", "Ganze Serie (auch frühere Monate)"]]);
     if (!scope) return;
   }
+  $("#sheet").close();
   setState({ entries: deleteOcc(state.entries, id, t, scope) });
   toast("Gelöscht");
-});
+}
+$("#btnDelete").onclick = deleteEditing;
 
 /* ================= Gesamtübersicht ================= */
 function renderYear() {
@@ -194,20 +199,19 @@ function renderYear() {
   const prevYear = Array.from({ length: 12 }, (_, m) => monthData(state.entries, (y - 1) * 12 + m));
   const sum = (arr, k) => arr.reduce((s, m) => s + m[k], 0);
   const yIn = sum(months, "sumIn"), yOut = sum(months, "sumOut"), pOut = sum(prevYear, "sumOut");
-  $("#title").textContent = "Gesamt " + y;
+  $("#title").textContent = "Jahr " + y;
   $("#yIn").textContent = fmt(yIn);
   $("#yOut").textContent = fmt(yOut);
   $("#yCmp").innerHTML = pOut ? "vs. Vorjahr" + cmpHtml(pct(yOut, pOut)) : "";
   setMoney("#ySaldo", yIn - yOut);
-  setMoney("#yStand", balanceAt(state, lastDay(y * 12 + 11)));
   const short = (m) => new Date(y, m.t % 12, 1).toLocaleDateString("de-DE", { month: "short" });
-  // Diagramm: Einnahmen/Ausgaben je Monat als Balkenpaar (Tippen zeigt Werte)
+  // Diagramm: Einnahmen/Ausgaben je Monat als Balkenpaar (Tippen öffnet den Monat)
   const max = Math.max(1, ...months.flatMap((m) => [m.sumIn, m.sumOut]));
   $("#chart").innerHTML = months.map((m) => `<button class="col${m.t === now ? " now" : ""}" data-t="${m.t}" `
     + `title="${short(m)}: Ein ${eur0.format(m.sumIn / 100)} · Aus ${eur0.format(m.sumOut / 100)}">`
     + `<i class="ci" style="height:${(m.sumIn / max) * 100}%"></i><i class="co" style="height:${(m.sumOut / max) * 100}%"></i></button>`).join("");
   $("#axis").innerHTML = months.map((m) => `<span>${short(m).slice(0, 1)}</span>`).join("");
-  $("#yMonths").innerHTML = `<div class="yrow mut"><span></span><span>Ein</span><span>Aus</span><span>Saldo</span></div>`
+  $("#yMonths").innerHTML = `<div class="yrow mut"><span></span><span>Ein</span><span>Aus</span><span>Übrig</span></div>`
     + months.map((m) => {
       const s = m.sumIn - m.sumOut;
       return `<button class="yrow${m.t === now ? " now" : ""}" data-t="${m.t}"><span>${short(m)}</span>`
@@ -218,7 +222,7 @@ function renderYear() {
     false, `Ausgaben ${y} nach Kategorie (vs. Vorjahr)`);
   renderFixed(now);
 }
-$("#chart").onclick = (e) => { const b = e.target.closest("button"); if (b) toast(b.title); };
+$("#chart").onclick = (e) => { const b = e.target.closest("button[data-t]"); if (b) { cur = +b.dataset.t; switchView("month"); } };
 $("#yMonths").onclick = (e) => {
   const b = e.target.closest("button[data-t]"); if (!b) return;
   cur = +b.dataset.t; switchView("month");
@@ -242,11 +246,24 @@ function renderFixed(now) {
     + `</ul>`;
 }
 
-/* ================= Navigation: Ansichten, Pfeile, Wischen ================= */
-function switchView(v) { view = v; setSeg("#viewSeg", "view", v); window.scrollTo(0, 0); render(); }
-$("#viewSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) switchView(b.dataset.view); };
-let lastView = "month";   // Zahnrad: Einstellungen öffnen, erneut tippen = zurück
-$("#gear").onclick = () => { if (view === "settings") switchView(lastView); else { lastView = view; switchView("settings"); } };
+/* ================= Navigation: untere Leiste, Lupe, Zahnrad, Zurück-Taste ================= */
+function switchView(v) { view = v; window.scrollTo(0, 0); render(); }
+$("#tabbar").onclick = (e) => { const b = e.target.closest("button"); if (b) switchView(b.dataset.view); };
+let lastView = "month";   // Lupe/Zahnrad: öffnen, erneut tippen = zurück zur vorherigen Ansicht
+const toggleView = (v) => { if (view === v) switchView(lastView); else { if (view !== "search" && view !== "settings") lastView = view; switchView(v); } };
+$("#gear").onclick = () => toggleView("settings");
+$("#searchBtn").onclick = () => toggleView("search");
+/** Android-Zurück-Taste: oberster Dialog zu → Lupe/Zahnrad zurück → zur Monatsansicht → App beenden.
+    Gibt false zurück, wenn nichts mehr zu schließen ist. */
+function handleBack() {
+  const open = [...document.querySelectorAll("dialog[open]")].pop();   // im DOM zuletzt = oben
+  if (open) { open.close(); return true; }
+  if (!$("#lock").hidden) return false;
+  if (view === "search" || view === "settings") { switchView(lastView); return true; }
+  if (view !== "month") { switchView("month"); return true; }
+  return false;
+}
+if (PLUGINS.App) PLUGINS.App.addListener("backButton", () => { if (!handleBack()) PLUGINS.App.exitApp(); });
 const go = (d) => { if (view !== "month" && view !== "year") return; cur += view === "year" ? d * 12 : d; render(); };
 $("#prev").onclick = () => go(-1);
 $("#next").onclick = () => go(1);
@@ -276,9 +293,21 @@ function openSheet(edit) {
   $("#date").value = e ? occDay(e, edit.t) : (monthIdx(today()) === cur ? today() : toIso(cur, 1));
   form = { ...form, shownDate: $("#date").value };   // um zu erkennen, ob das Datum geändert wurde
   renderQuick(!e);
+  $("#opts").open = false;                 // Datum, Notiz, Wiederholung eingeklappt; Zusammenfassung zeigt den Stand
+  updateOptsSummary();
+  $("#btnDelete").hidden = !e;
+  $("#tileHint").textContent = e ? "Kategorie antippen – Änderung wird gespeichert" : "Kategorie antippen – wird sofort gespeichert";
   $("#sheet").showModal();
   if (!e) $("#amount").focus();
 }
+/** „Weitere Angaben“ zeigt eingeklappt, was gerade eingestellt ist – z. B. „Heute · einmalig“ */
+function updateOptsSummary() {
+  const d = $("#date").value, note = $("#note").value.trim();
+  const day = !d || d === today() ? "Heute" : new Date(d + "T12:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const rep = form.repeat === "none" ? "einmalig" : REP_LABEL[form.repeat];
+  $("#optsSum").textContent = `${day} · ${rep}${note ? " · " + note : ""}  (ändern)`;
+}
+["#date", "#note"].forEach((s) => $(s).addEventListener("input", updateOptsSummary));
 function renderQuick(show) {
   const list = show ? quickSuggestions(state.entries, today()) : [];
   $("#quick").innerHTML = list.map((q, i) => `<button data-i="${i}">${esc(catIcon(q.type, q.cat))} ${esc(q.note || q.cat)} `
@@ -304,7 +333,7 @@ $("#typeSeg").onclick = (e) => {
 };
 $("#repSeg").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  form = { ...form, repeat: b.dataset.rep }; setSeg("#repSeg", "rep", form.repeat);
+  form = { ...form, repeat: b.dataset.rep }; setSeg("#repSeg", "rep", form.repeat); updateOptsSummary();
 };
 $("#tiles").onclick = async (ev) => {
   const b = ev.target.closest("button[data-i]"); if (!b) return;
