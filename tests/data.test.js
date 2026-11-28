@@ -160,3 +160,17 @@ test("Review-Fixes: 'ab jetzt' übernimmt ausgelassene Folgemonate und überlapp
   assert.equal(D.monthData(after, m("2026-04")).sumOut, 2000);
   assert.equal(D.monthData(after, m("2026-03")).sumOut, 1000);
 });
+
+test("Weitere Konten: Migration behält gültige Konten, verwirft kaputte", () => {
+  const st = D.migrate({ accounts: [
+    { id: "a", name: "Sparbuch", icon: "🐷", balance: 250000, updated: "2026-11-01", prev: 240000 },
+    { name: "Schulden", balance: -5000, updated: "2026-11-02" },
+    { name: "", balance: 1, updated: "2026-11-02" },
+    { name: "Kaputt", balance: 1.5, updated: "2026-11-02" },
+  ] });
+  assert.equal(st.accounts.length, 2);
+  assert.deepEqual(st.accounts[0], { id: "a", name: "Sparbuch", icon: "🐷", balance: 250000, updated: "2026-11-01", prev: 240000 });
+  assert.equal(st.accounts[1].prev, null);
+  assert.equal(st.accounts[1].icon, "🏦");
+  assert.deepEqual(D.migrate({}).accounts, []);
+});

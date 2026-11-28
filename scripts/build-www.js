@@ -5,7 +5,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const out = path.join(root, "www");
-const FILES = ["index.html", "manifest.json", "js/data.js", "js/ui.js", "js/more.js"];
+const FILES = ["index.html", "manifest.json", "js/data.js", "js/ui.js", "js/accounts.js", "js/more.js"];
 const PLACEHOLDER = 'window.APP_VERSION = "";';
 
 const sw = fs.readFileSync(path.join(root, "sw.js"), "utf8");

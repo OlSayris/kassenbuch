@@ -27,10 +27,8 @@ $("#sList").onclick = (e) => {          // Treffer antippen → Monat öffnen
   cur = +li.dataset.t; switchView("month");
 };
 
-/* ================= Mehr-Seite ================= */
-let catType = "out";
-function renderMore() {
-  $("#title").textContent = "Mehr";
+/* ================= Konten-Reiter: Kassenbuch-Kontostand (Rest in js/accounts.js) ================= */
+function renderCashSection() {
   const bal = balanceAt(state, today());
   $("#todayBal").textContent = bal === null ? "Kassenstand heute: – (vor dem Stichtag des Anfangsbestands)"
     : `Kassenstand heute laut App: ${fmt(bal)}`;
@@ -38,9 +36,14 @@ function renderMore() {
   if (document.activeElement !== $("#openAmt")) $("#openAmt").value = o ? fmtIn(o.amount) : "";
   $("#openDate").value = o ? o.date : $("#openDate").value || today();
   $("#btnOpenDel").hidden = !o;
+}
+
+/* ================= Einstellungen (Zahnrad) ================= */
+let catType = "out";
+function renderSettings() {
+  $("#title").textContent = "Einstellungen";
   if (document.activeElement !== $("#budgetIn")) $("#budgetIn").value = state.budget ? fmtIn(state.budget) : "";
   renderCatList();
-  renderGoals();
   $("#lockToggle").checked = state.lock;
   $("#lockToggle").disabled = !PLUGINS.NativeBiometric;
   $("#lockHint").textContent = PLUGINS.NativeBiometric

@@ -87,14 +87,16 @@ function setMoney(sel, cents) {
 
 /* ================= Gesamt-Render ================= */
 function render() {
-  ["month", "year", "search", "more"].forEach((v) => { $(`#${v}View`).hidden = view !== v; });
+  ["month", "year", "search", "accounts", "settings"].forEach((v) => { $(`#${v}View`).hidden = view !== v; });
   const nav = view === "month" || view === "year";
   $("#prev").hidden = !nav; $("#next").hidden = !nav;
-  $("#fab").hidden = view === "more";
+  $("#fab").hidden = view === "accounts" || view === "settings";
+  $("#gear").classList.toggle("on", view === "settings");
   if (view === "month") renderMonth();
   else if (view === "year") renderYear();
   else if (view === "search") renderSearch();
-  else renderMore();
+  else if (view === "accounts") renderAccounts();
+  else renderSettings();
 }
 
 /* ================= Monatsansicht ================= */
@@ -232,6 +234,8 @@ function renderFixed(now) {
 /* ================= Navigation: Ansichten, Pfeile, Wischen ================= */
 function switchView(v) { view = v; setSeg("#viewSeg", "view", v); window.scrollTo(0, 0); render(); }
 $("#viewSeg").onclick = (e) => { const b = e.target.closest("button"); if (b) switchView(b.dataset.view); };
+let lastView = "month";   // Zahnrad: Einstellungen öffnen, erneut tippen = zurück
+$("#gear").onclick = () => { if (view === "settings") switchView(lastView); else { lastView = view; switchView("settings"); } };
 const go = (d) => { if (view !== "month" && view !== "year") return; cur += view === "year" ? d * 12 : d; render(); };
 $("#prev").onclick = () => go(-1);
 $("#next").onclick = () => go(1);

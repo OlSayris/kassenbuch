@@ -82,8 +82,14 @@ function migrate(raw) {
   const goals = (Array.isArray(r.goals) ? r.goals : [])
     .filter((g) => g && cleanName(g.name) && posInt(g.target) && Number.isInteger(g.saved))
     .map((g) => ({ id: String(g.id || uid()), name: cleanName(g.name), target: g.target, saved: g.saved }));
+  // Weitere Konten (Sparbuch, Tagesgeld …): nur der zuletzt eingetragene Stand, plus Vorwert für die Veränderung
+  const accounts = (Array.isArray(r.accounts) ? r.accounts : [])
+    .filter((a) => a && cleanName(a.name) && Number.isInteger(a.balance) && ISO_DATE.test(a.updated))
+    .map((a) => ({ id: String(a.id || uid()), name: cleanName(a.name), icon: String(a.icon || "🏦").slice(0, 8),
+                   balance: a.balance, updated: a.updated, prev: Number.isInteger(a.prev) ? a.prev : null }));
   return {
     entries: list.map(migrateEntry).filter(isValid),
+    accounts,
     budget: posInt(r.budget),
     opening, catBudgets, goals,
     cats: migrateCats(r.cats),

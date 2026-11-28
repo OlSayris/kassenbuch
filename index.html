@@ -47,6 +47,8 @@
   header h1 { font-size:1.15rem; font-weight:600; flex:1; text-align:center; }
   header button { font-size:1.6rem; border-radius:50%; }
   header button[hidden] { visibility:hidden; display:block; }
+  header #gear { font-size:1.35rem; color:var(--mut); }
+  header #gear.on { color:var(--acc); }
   .seg { display:flex; background:var(--bg); border-radius:12px; padding:3px; gap:3px; margin-bottom:10px; }
   .seg button { flex:1; border-radius:9px; font-size:.9rem; min-width:0; }
   .seg button.on { background:var(--card); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.15); }
@@ -54,7 +56,7 @@
   /* ---------- Übersicht & Balken ---------- */
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
   .grid b { display:block; font-size:1.1rem; }
-  .big b { font-size:1.6rem; }
+  .big b { font-size:1.6rem; display:block; }
   .track { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:6px; }
   .fill { height:100%; background:var(--bar); border-radius:4px; }
   .warn .fill { background:var(--warn); }
@@ -137,12 +139,13 @@
     <button id="prev" aria-label="Zurück">‹</button>
     <h1 id="title"></h1>
     <button id="next" aria-label="Weiter">›</button>
+    <button id="gear" aria-label="Einstellungen">⚙</button>
   </header>
   <div class="seg" id="viewSeg">
     <button data-view="month" class="on">Monat</button>
     <button data-view="year">Gesamt</button>
     <button data-view="search">Suche</button>
-    <button data-view="more">Mehr</button>
+    <button data-view="accounts">Konten</button>
   </div>
 
   <!-- ===== Monat ===== -->
@@ -193,16 +196,43 @@
     <section class="card"><div class="grid" id="sSum"></div><ul id="sList" style="margin-top:8px"></ul></section>
   </div>
 
-  <!-- ===== Mehr ===== -->
-  <div id="moreView" hidden>
+  <!-- ===== Konten ===== -->
+  <div id="accountsView" hidden>
     <section class="card">
-      <h2>Kontostand</h2>
+      <div class="grid">
+        <div><span class="mut">Kassenbuch heute</span><b id="aCash"></b></div>
+        <div><span class="mut">Weitere Konten</span><b id="aOther"></b></div>
+      </div>
+      <div class="big" style="margin-top:8px"><span class="mut">Gesamtvermögen</span><b id="aTotal"></b></div>
+    </section>
+    <section class="card">
+      <h2>Weitere Konten</h2>
+      <p class="mut" style="margin-bottom:4px">z. B. Sparbuch, Tagesgeld, Depot. Konto antippen, um den Stand zu ändern.</p>
+      <ul id="accList"></ul>
+      <button class="link" id="btnAccAdd">+ Konto hinzufügen</button>
+    </section>
+    <section class="card">
+      <h2>Kassenbuch-Kontostand</h2>
       <p class="mut" id="todayBal"></p>
       <p class="mut" style="margin:10px 0 4px">Aktuellen Kontostand eingeben – die Differenz wird als „Kontoabgleich“ (Sonstiges) gebucht.</p>
       <div class="two"><input id="realBal" inputmode="decimal" placeholder="z. B. 1.234,56" aria-label="Kontostand"><button class="btn" id="btnReconcile">Abgleichen</button></div>
       <p class="mut" style="margin:10px 0 4px">Anfangsbestand (Stand zu Beginn des Stichtags):</p>
       <div class="two"><input id="openAmt" inputmode="decimal" placeholder="Betrag" aria-label="Anfangsbestand"><input id="openDate" type="date" aria-label="Stichtag"></div>
       <div class="row"><button class="link" id="btnOpenDel">Entfernen</button><button class="btn" id="btnOpening">Speichern</button></div>
+    </section>
+    <section class="card">
+      <h2>Sparziele</h2>
+      <div id="goalList"></div>
+      <button class="link" id="btnGoalAdd">+ Sparziel anlegen</button>
+    </section>
+  </div>
+
+  <!-- ===== Einstellungen (Zahnrad) ===== -->
+  <div id="settingsView" hidden>
+    <section class="card">
+      <h2>Sicherheit</h2>
+      <label class="switch"><span>App-Sperre (Fingerabdruck / Display-PIN)</span><input type="checkbox" id="lockToggle"></label>
+      <p class="mut" id="lockHint"></p>
     </section>
     <section class="card">
       <h2>Budget</h2>
@@ -214,16 +244,6 @@
       <div class="seg" id="catSeg"><button data-type="out" class="on">Ausgaben</button><button data-type="in">Einnahmen</button></div>
       <ul id="catList"></ul>
       <button class="link" id="btnCatAdd">+ Kategorie hinzufügen</button>
-    </section>
-    <section class="card">
-      <h2>Sparziele</h2>
-      <div id="goalList"></div>
-      <button class="link" id="btnGoalAdd">+ Sparziel anlegen</button>
-    </section>
-    <section class="card">
-      <h2>Sicherheit</h2>
-      <label class="switch"><span>App-Sperre (Fingerabdruck / Display-PIN)</span><input type="checkbox" id="lockToggle"></label>
-      <p class="mut" id="lockHint"></p>
     </section>
     <section class="card">
       <h2>Daten &amp; App</h2>
@@ -268,6 +288,7 @@
 
 <script src="js/data.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/accounts.js"></script>
 <script src="js/more.js"></script>
 </body>
 </html>
