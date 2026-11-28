@@ -296,13 +296,6 @@ function initUpdates() {
 }
 
 /* ================= Start ================= */
-(() => {   // iOS-Icon: PNG aus Canvas (iOS nimmt kein SVG)
-  const c = Object.assign(document.createElement("canvas"), { width: 180, height: 180 }), g = c.getContext("2d");
-  g.fillStyle = "#0f766e"; g.fillRect(0, 0, 180, 180);
-  g.fillStyle = "#fff"; g.font = "bold 110px Arial,sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillText("€", 90, 98);
-  $("#touchIcon").href = c.toDataURL("image/png");
-})();
 (async () => {
   if (PLUGINS.Filesystem) await loadFromFile();   // erst Datei laden, dann Sperre prüfen, dann anzeigen
   if (state.lock && PLUGINS.NativeBiometric) showLock();

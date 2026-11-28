@@ -1,7 +1,8 @@
 // Service Worker – bei JEDER Änderung an einer Datei VERSION erhöhen!
-const VERSION = "1.5.4";
+const VERSION = "1.5.5";
 const CACHE = "kassenbuch-" + VERSION;
-const FILES = ["./", "./index.html", "./manifest.json", "./sw.js", "./js/data.js", "./js/ui.js", "./js/accounts.js", "./js/budget.js", "./js/more.js"];
+const FILES = ["./", "./index.html", "./manifest.json", "./sw.js", "./js/data.js", "./js/ui.js", "./js/accounts.js", "./js/budget.js", "./js/more.js",
+  "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png", "./icons/apple-touch-icon.png"];
 
 // Installieren: alle Dateien frisch vom Server holen (HTTP-Cache umgehen) und sofort aktiv werden
 self.addEventListener("install", (e) => {
