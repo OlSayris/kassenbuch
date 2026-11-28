@@ -77,6 +77,12 @@
           font-size:.82rem; padding:0 2px; border-top:1px solid var(--line); border-radius:0; }
   .yrow span:first-child { text-align:left; }
   .yrow.now { font-weight:700; }
+  /* ---------- Budget-Reiter ---------- */
+  .brow { display:flex; align-items:center; gap:10px; padding-top:10px; }
+  .brow > span { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .brow input { width:110px; flex:0 0 110px; text-align:right; }
+  .bitem { border-top:1px solid var(--line); padding-bottom:8px; margin-top:8px; }
+  .bitem:first-child { border-top:0; margin-top:0; }
   /* ---------- Listen ---------- */
   ul { list-style:none; padding:0; }
   li { display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--line); min-height:52px; }
@@ -124,9 +130,16 @@
   #lock .big { font-size:3rem; }
   .switch { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; }
   .switch input { width:24px; height:24px; min-height:0; accent-color:var(--acc); }
-  #toast { position:fixed; left:50%; top:calc(12px + var(--sat)); transform:translate(-50%,-150%); background:var(--fg); color:var(--bg);
-           padding:10px 16px; border-radius:12px; transition:transform .3s; font-size:.9rem; max-width:90vw; z-index:60; }
-  #toast.show { transform:translate(-50%,0); }
+  /* Hinweis: komplett unsichtbar, solange nichts angezeigt wird (auch bei Notch/Statusleiste) */
+  #toast { position:fixed; left:50%; top:calc(12px + var(--sat)); transform:translate(-50%,-20px); background:var(--fg); color:var(--bg);
+           padding:10px 16px; border-radius:12px; font-size:.9rem; max-width:90vw; z-index:60; pointer-events:none;
+           opacity:0; visibility:hidden; transition:opacity .25s, transform .25s, visibility 0s .25s; }
+  #toast.show { opacity:1; visibility:visible; transform:translate(-50%,0); transition:opacity .25s, transform .25s; }
+  /* ---------- Eingabedialog ---------- */
+  #inp { margin:auto; border-radius:20px; max-width:400px; width:calc(100% - 32px); }
+  #inp label { display:block; margin-top:10px; }
+  #inp label input { margin-top:4px; }
+  #inp .row { margin-top:14px; }
 </style>
 </head>
 <body>
@@ -144,6 +157,7 @@
   <div class="seg" id="viewSeg">
     <button data-view="month" class="on">Monat</button>
     <button data-view="year">Gesamt</button>
+    <button data-view="budget">Budget</button>
     <button data-view="search">Suche</button>
     <button data-view="accounts">Konten</button>
   </div>
@@ -196,6 +210,21 @@
     <section class="card"><div class="grid" id="sSum"></div><ul id="sList" style="margin-top:8px"></ul></section>
   </div>
 
+  <!-- ===== Budget ===== -->
+  <div id="budgetView" hidden>
+    <section class="card">
+      <div class="brow"><span><b>Gesamtbudget</b><br><span class="mut" id="bTotalUse"></span></span>
+        <input id="budgetIn" inputmode="decimal" placeholder="–" aria-label="Monatsbudget gesamt"></div>
+      <div id="bTotalBar"></div>
+      <p class="mut" id="bSum" style="margin-top:8px"></p>
+    </section>
+    <section class="card">
+      <h2>Budget je Kategorie (pro Monat)</h2>
+      <p class="mut">Betrag eintragen, leer lassen = kein Budget. Verbrauch: aktueller Monat.</p>
+      <div id="bList"></div>
+    </section>
+  </div>
+
   <!-- ===== Konten ===== -->
   <div id="accountsView" hidden>
     <section class="card">
@@ -233,11 +262,6 @@
       <h2>Sicherheit</h2>
       <label class="switch"><span>App-Sperre (Fingerabdruck / Display-PIN)</span><input type="checkbox" id="lockToggle"></label>
       <p class="mut" id="lockHint"></p>
-    </section>
-    <section class="card">
-      <h2>Budget</h2>
-      <div class="two"><input id="budgetIn" inputmode="decimal" placeholder="€ pro Monat" aria-label="Monatsbudget"><button class="btn" id="btnBudget">Speichern</button></div>
-      <p class="mut">Budget je Kategorie: in der Monatsansicht auf eine Kategorie tippen.</p>
     </section>
     <section class="card">
       <h2>Kategorien</h2>
@@ -278,6 +302,14 @@
 
 <dialog id="ask"><p id="askText"></p><div id="askBtns"></div></dialog>
 
+<dialog id="inp">
+  <form id="inpForm">
+    <p id="inpTitle"></p>
+    <div id="inpFields"></div>
+    <div class="row"><button type="button" class="link" id="inpCancel">Abbrechen</button><button type="submit" class="btn">OK</button></div>
+  </form>
+</dialog>
+
 <div id="lock" hidden>
   <div class="big">🔒</div>
   <p>Kassenbuch ist gesperrt</p>
@@ -289,6 +321,7 @@
 <script src="js/data.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/accounts.js"></script>
+<script src="js/budget.js"></script>
 <script src="js/more.js"></script>
 </body>
 </html>

@@ -24,12 +24,13 @@ function renderAccounts() {
 
 const setAccounts = (accounts) => setState({ accounts });
 
-/** Neuer Stand für Konto i (Tippen auf die Zeile) */
-function updateBalance(i) {
+
+/** Neuer Stand für Konto i – bisheriger Stand steht schon im Feld */
+async function updateBalance(i) {
   const a = state.accounts[i];
-  const v = prompt(`Aktueller Stand von „${a.name}“ in €:`, fmtIn(a.balance));
-  if (v === null) return;
-  const balance = parseSigned(v);
+  const r = await inputBox(`Neuer Stand: ${a.name}`, [{ label: "Aktueller Stand in €", value: fmtIn(a.balance), mode: "decimal" }]);
+  if (!r) return;
+  const balance = parseSigned(r[0]);
   if (isNaN(balance)) return toast("Ungültiger Betrag");
   if (balance === a.balance) return toast("Stand unverändert");
   setAccounts(state.accounts.map((x, k) => (k === i ? { ...x, prev: x.balance, balance, updated: today() } : x)));
@@ -47,23 +48,21 @@ $("#accList").onclick = async (e) => {
     if (confirm(`Konto „${a.name}“ löschen?`)) setAccounts(state.accounts.filter((_, k) => k !== i));
     return;
   }
-  if (what === "ren") {
-    const name = prompt("Name des Kontos:", a.name);
-    if (name === null) return;
-    const icon = prompt("Symbol (ein Emoji):", a.icon);
-    if (icon === null) return;
-    const clean = name.trim().slice(0, 30);
-    if (!clean) return toast("Name darf nicht leer sein");
-    setAccounts(state.accounts.map((x, k) => (k === i ? { ...x, name: clean, icon: icon.trim().slice(0, 8) || x.icon } : x)));
-  }
+  if (what !== "ren") return;
+  const r = await inputBox("Konto bearbeiten", [{ label: "Name", value: a.name }, { label: "Symbol (Emoji)", value: a.icon }]);
+  if (!r) return;
+  const name = r[0].slice(0, 30);
+  if (!name) return toast("Name darf nicht leer sein");
+  setAccounts(state.accounts.map((x, k) => (k === i ? { ...x, name, icon: r[1].slice(0, 8) || x.icon } : x)));
 };
 
-$("#btnAccAdd").onclick = () => {
-  const name = (prompt("Name des Kontos (z. B. Sparbuch):") || "").trim().slice(0, 30);
-  if (!name) return;
-  const balance = parseSigned(prompt(`Aktueller Stand von „${name}“ in €:`) || "");
+$("#btnAccAdd").onclick = async () => {
+  const r = await inputBox("Neues Konto", [{ label: "Name (z. B. Sparbuch)", value: "" },
+    { label: "Aktueller Stand in €", value: "", mode: "decimal" }, { label: "Symbol (Emoji)", value: "🏦" }]);
+  if (!r) return;
+  const name = r[0].slice(0, 30), balance = parseSigned(r[1]), icon = (r[2] || "🏦").slice(0, 8);
+  if (!name) return toast("Name darf nicht leer sein");
   if (isNaN(balance)) return toast("Ungültiger Betrag");
-  const icon = ((prompt("Symbol (ein Emoji):", "🏦") || "🏦").trim() || "🏦").slice(0, 8);
   setAccounts([...state.accounts, { id: uid(), name, icon, balance, updated: today(), prev: null }]);
   toast(`Konto „${name}“ angelegt`);
 };

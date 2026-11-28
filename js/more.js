@@ -42,7 +42,6 @@ function renderCashSection() {
 let catType = "out";
 function renderSettings() {
   $("#title").textContent = "Einstellungen";
-  if (document.activeElement !== $("#budgetIn")) $("#budgetIn").value = state.budget ? fmtIn(state.budget) : "";
   renderCatList();
   $("#lockToggle").checked = state.lock;
   $("#lockToggle").disabled = !PLUGINS.NativeBiometric;
@@ -86,12 +85,6 @@ $("#btnOpening").onclick = () => {
   toast("Anfangsbestand gespeichert");
 };
 $("#btnOpenDel").onclick = () => { if (confirm("Anfangsbestand entfernen?")) setState({ opening: null }); };
-$("#btnBudget").onclick = () => {
-  const v = $("#budgetIn").value.trim(), cents = parseAmount(v);
-  if (v && isNaN(cents)) return shake($("#budgetIn"));
-  setState({ budget: v ? cents : 0 });
-  toast(v ? "Budget gespeichert" : "Budget entfernt");
-};
 
 /* ---------- Kategorien ---------- */
 function renderCatList() {
@@ -103,27 +96,29 @@ $("#catSeg").onclick = (e) => {
   const b = e.target.closest("button"); if (!b) return;
   catType = b.dataset.type; setSeg("#catSeg", "type", catType); renderCatList();
 };
-$("#catList").onclick = (e) => {
+$("#catList").onclick = async (e) => {
   const li = e.target.closest("li[data-i]"); if (!li) return;
   const [name, icon] = state.cats[catType][+li.dataset.i];
   if (e.target.closest(".del")) {
     if (!confirm(`Kategorie „${name}“ löschen?\nBestehende Buchungen werden zu „Sonstiges“.`)) return;
     return setState(deleteCat(state, catType, name));
   }
-  if (!e.target.closest(".ed")) return;
-  const newName = name === "Sonstiges" ? name : prompt("Name der Kategorie:", name);
-  if (newName === null) return;
-  const newIcon = prompt("Symbol (ein Emoji):", icon);
-  if (newIcon === null) return;
-  const next = renameCat(state, catType, name, newName, newIcon.trim().slice(0, 8));
+  // Bearbeiten: bisheriger Name und Symbol stehen schon im Feld („Sonstiges“ behält seinen Namen)
+  const fields = name === "Sonstiges" ? [{ label: "Symbol (Emoji)", value: icon }]
+    : [{ label: "Name", value: name }, { label: "Symbol (Emoji)", value: icon }];
+  const r = await inputBox("Kategorie bearbeiten", fields);
+  if (!r) return;
+  const [newName, newIcon] = name === "Sonstiges" ? [name, r[0]] : r;
+  const next = renameCat(state, catType, name, newName, newIcon.slice(0, 8));
   if (next === state) return toast("Name ungültig oder schon vergeben");
   setState(next);
 };
-$("#btnCatAdd").onclick = () => {
-  const name = (prompt("Name der neuen Kategorie:") || "").trim().slice(0, 30);
-  if (!name) return;
+$("#btnCatAdd").onclick = async () => {
+  const r = await inputBox("Neue Kategorie", [{ label: "Name", value: "" }, { label: "Symbol (Emoji)", value: "🏷️" }]);
+  if (!r) return;
+  const name = r[0].slice(0, 30), icon = (r[1] || "🏷️").slice(0, 8);
+  if (!name) return toast("Name darf nicht leer sein");
   if (state.cats[catType].some(([n]) => n === name)) return toast("Kategorie gibt es schon");
-  const icon = ((prompt("Symbol (ein Emoji):", "🏷️") || "🏷️").trim() || "🏷️").slice(0, 8);
   const list = state.cats[catType], at = list.findIndex(([n]) => n === "Sonstiges");
   const next = [...list.slice(0, at), [name, icon], ...list.slice(at)];   // vor „Sonstiges“ einreihen
   setState({ cats: { ...state.cats, [catType]: next } });
@@ -139,23 +134,24 @@ function renderGoals() {
       + `<span><button class="link" data-a="pay">± Betrag</button><button class="link" data-a="del">Löschen</button></span></div></div>`;
   }).join("") : `<p class="mut">Noch keine Sparziele.</p>`;
 }
-$("#goalList").onclick = (e) => {
+$("#goalList").onclick = async (e) => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
   const i = +b.closest(".goal").dataset.i, g = state.goals[i];
   if (b.dataset.a === "del") {
     if (confirm(`Sparziel „${g.name}“ löschen?`)) setState({ goals: state.goals.filter((_, k) => k !== i) });
     return;
   }
-  const v = prompt(`Betrag für „${g.name}“ (z. B. 50 oder -20 zum Entnehmen):`);
-  if (v === null) return;
-  const c = parseSigned(v);
+  const r = await inputBox(`Sparziel „${g.name}“`, [{ label: "Betrag einzahlen (negativ = entnehmen)", value: "", mode: "decimal" }]);
+  if (!r) return;
+  const c = parseSigned(r[0]);
   if (isNaN(c) || !c) return toast("Ungültiger Betrag");
   setState({ goals: state.goals.map((x, k) => (k === i ? { ...x, saved: x.saved + c } : x)) });
 };
-$("#btnGoalAdd").onclick = () => {
-  const name = (prompt("Wofür sparst du? (z. B. Urlaub)") || "").trim().slice(0, 30);
-  if (!name) return;
-  const target = parseAmount(prompt("Zielbetrag in €:") || "");
+$("#btnGoalAdd").onclick = async () => {
+  const r = await inputBox("Neues Sparziel", [{ label: "Wofür? (z. B. Urlaub)", value: "" }, { label: "Zielbetrag in €", value: "", mode: "decimal" }]);
+  if (!r) return;
+  const name = r[0].slice(0, 30), target = parseAmount(r[1]);
+  if (!name) return toast("Name darf nicht leer sein");
   if (isNaN(target)) return toast("Ungültiger Zielbetrag");
   setState({ goals: [...state.goals, { id: uid(), name, target, saved: 0 }] });
 };

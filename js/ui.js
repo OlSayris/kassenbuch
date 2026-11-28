@@ -75,6 +75,23 @@ function ask(text, options) {
     d.showModal();
   });
 }
+/** Eingabedialog mit vorausgefüllten Feldern (ersetzt prompt(), das in der Android-App keinen Vorgabewert zeigt).
+    fields: [{label, value, mode}] (mode = inputmode, z. B. "decimal") → Promise<string[] | null> */
+function inputBox(title, fields) {
+  return new Promise((resolve) => {
+    const d = $("#inp");
+    let result = null;
+    $("#inpTitle").textContent = title;
+    $("#inpFields").innerHTML = fields.map((f) => `<label class="mut">${esc(f.label)}<input value="${esc(f.value ?? "")}"`
+      + `${f.mode ? ` inputmode="${f.mode}"` : ""} autocomplete="off"></label>`).join("");
+    $("#inpForm").onsubmit = (e) => { e.preventDefault(); result = [...d.querySelectorAll("input")].map((x) => x.value.trim()); d.close(); };
+    $("#inpCancel").onclick = () => d.close();
+    d.onclose = () => resolve(result);
+    d.showModal();
+    const first = d.querySelector("input");
+    if (first) { first.focus(); first.select(); }
+  });
+}
 const shake = (el) => { el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); el.focus(); };
 function setSeg(sel, attr, value) {
   document.querySelectorAll(`${sel} button`).forEach((b) => b.classList.toggle("on", b.dataset[attr] === value));
@@ -87,14 +104,15 @@ function setMoney(sel, cents) {
 
 /* ================= Gesamt-Render ================= */
 function render() {
-  ["month", "year", "search", "accounts", "settings"].forEach((v) => { $(`#${v}View`).hidden = view !== v; });
+  ["month", "year", "search", "budget", "accounts", "settings"].forEach((v) => { $(`#${v}View`).hidden = view !== v; });
   const nav = view === "month" || view === "year";
   $("#prev").hidden = !nav; $("#next").hidden = !nav;
-  $("#fab").hidden = view === "accounts" || view === "settings";
+  $("#fab").hidden = view === "accounts" || view === "settings" || view === "budget";
   $("#gear").classList.toggle("on", view === "settings");
   if (view === "month") renderMonth();
   else if (view === "year") renderYear();
   else if (view === "search") renderSearch();
+  else if (view === "budget") renderBudgetView();
   else if (view === "accounts") renderAccounts();
   else renderSettings();
 }
@@ -111,7 +129,7 @@ function renderMonth() {
   const isNow = cur === monthIdx(today()), bal = isNow ? balanceAt(state, today()) : null;
   $("#standToday").textContent = isNow && bal !== null ? `Kassenstand heute: ${fmt(bal)}` : "";
   renderBudget(md.sumOut);
-  renderCatBars($("#cats"), catTotals(md.items), catTotals(prev.items), true, "Ausgaben nach Kategorie · Tippen = Budget");
+  renderCatBars($("#cats"), catTotals(md.items), catTotals(prev.items), true, "Ausgaben nach Kategorie · Tippen = Budget planen");
   renderList($("#list"), md.items, true);
 }
 function renderBudget(sumOut) {
@@ -138,15 +156,8 @@ function renderCatBars(el, totals, prevTotals, withBudget, title) {
       + `<span>${right}${v ? cmpHtml(pct(v, prevTotals[c] || 0)) : ""}</span></div>`
       + `<div class="track"><div class="fill" style="width:${Math.min(100, ratio * 100)}%"></div></div></button>`;
   }).join("");
-  el.onclick = withBudget ? (e) => {
-    const b = e.target.closest("button[data-i]"); if (!b) return;
-    const name = names[+b.dataset.i], old = state.catBudgets[name];
-    const v = prompt(`Monatsbudget für „${name}“ in € (leer = keins):`, old ? fmtIn(old) : "");
-    if (v === null) return;
-    const cents = parseAmount(v), catBudgets = { ...state.catBudgets };
-    if (isNaN(cents)) delete catBudgets[name]; else catBudgets[name] = cents;
-    setState({ catBudgets });
-  } : null;
+  // Tippen auf eine Kategorie → Reiter „Budget“
+  el.onclick = withBudget ? (e) => { if (e.target.closest("button[data-i]")) switchView("budget"); } : null;
 }
 /** Buchungsliste. editable: Tippen = bearbeiten, ✕ = löschen; sonst Tippen = zum Monat springen */
 function renderList(el, items, editable) {
