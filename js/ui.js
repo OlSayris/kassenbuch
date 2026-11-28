@@ -328,26 +328,54 @@ function openSheet(edit, copy) {
   $("#date").value = e ? occDay(e, edit.t) : copy ? today() : (monthIdx(today()) === cur ? today() : toIso(cur, 1));
   form = { ...form, shownDate: $("#date").value };   // um zu erkennen, ob das Datum geändert wurde
   renderQuick(!src);
-  $("#editActions").hidden = !e;
+  renderNoteChips();
+  $("#btnCopy").hidden = !e; $("#btnDelete").hidden = !e;   // „Als Vorlage“ gibt es immer
   $("#btnSave").textContent = e ? "Änderung speichern" : "Speichern";
   if (!$("#sheet").open) $("#sheet").showModal();
   $("#sheet").scrollTop = 0;
   if (!src) $("#amount").focus();
 }
-/** Häufige Buchungen als Vorschlag: Antippen füllt das Formular (gespeichert wird mit „Speichern“) */
+/** Vorlagen (⭐) und häufige Buchungen als Vorschlag: Antippen füllt das Formular (gespeichert wird mit „Speichern“) */
 function renderQuick(show) {
-  const list = show ? quickSuggestions(state.entries, today()) : [];
-  $("#quick").innerHTML = list.map((q, i) => `<button data-i="${i}">${esc(catIcon(q.type, q.cat))} ${esc(q.note || q.cat)} `
+  const tpls = show ? state.templates.map((t) => ({ ...t, star: true })) : [];
+  const auto = show ? quickSuggestions(state.entries, today()).filter((q) => !tpls.some((t) => sameTemplate(t, { ...q, repeat: "none" }))) : [];
+  const list = [...tpls, ...auto];
+  $("#quick").innerHTML = list.map((q, i) => `<button data-i="${i}">${q.star ? "⭐ " : ""}${esc(catIcon(q.type, q.cat))} ${esc(q.note || q.cat)} `
     + `${q.type === "in" ? "+" : ""}${fmt(q.amount)}</button>`).join("");
   $("#quick").onclick = (ev) => {
     const b = ev.target.closest("button"); if (!b) return;
     const q = list[+b.dataset.i];
-    form = { ...form, type: q.type }; setSeg("#typeSeg", "type", q.type);
+    form = { ...form, type: q.type, repeat: q.repeat || "none" };
+    setSeg("#typeSeg", "type", q.type); setSeg("#repSeg", "rep", form.repeat);
     renderTiles(q.cat);
     $("#amount").value = fmtIn(q.amount);
     $("#note").value = q.note;
+    renderNoteChips();
   };
 }
+/** Letzte 5 Notizen als Auswahl unter dem Notizfeld; beim Tippen passend gefiltert */
+function renderNoteChips() {
+  const typed = $("#note").value.trim().toLowerCase();
+  const list = recentNotes(state.entries, 5).filter((n) => n.toLowerCase() !== typed && (!typed || n.toLowerCase().includes(typed)));
+  $("#noteChips").innerHTML = list.map((n) => `<button type="button">${esc(n)}</button>`).join("");
+}
+$("#note").addEventListener("input", renderNoteChips);
+$("#noteChips").onclick = (ev) => {
+  const b = ev.target.closest("button"); if (!b) return;
+  $("#note").value = b.textContent;
+  renderNoteChips();
+};
+/** Aktuelle Eingaben als Vorlage speichern */
+$("#btnTemplate").onclick = () => {
+  const amount = parseAmount($("#amount").value);
+  if (isNaN(amount)) { toast("Für eine Vorlage zuerst einen Betrag eingeben"); return shake($("#amount")); }
+  if (!form.cat) { toast("Für eine Vorlage zuerst eine Kategorie wählen"); return shake($("#tiles")); }
+  const tpl = { id: uid(), type: form.type, amount, cat: form.cat, note: $("#note").value.trim().slice(0, 80), repeat: form.repeat };
+  if (state.templates.some((t) => sameTemplate(t, tpl))) return toast("Diese Vorlage gibt es schon");
+  state = { ...state, templates: [...state.templates, tpl] };
+  save();
+  toast("⭐ Als Vorlage gespeichert – beim Erfassen oben auswählbar");
+};
 function addEntry(p) {
   const entry = { id: uid(), ...p, end: null, skip: [], schemaVersion: SCHEMA };
   cur = monthIdx(p.date);

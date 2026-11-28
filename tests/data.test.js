@@ -196,3 +196,24 @@ test("Sicherungen: Namen, Aufräumen, Beschriftung, Zählung", () => {
   assert.equal(D.entryCount("kaputt"), 0);
   assert.equal(D.entryCount(null), 0);
 });
+
+test("Notiz-Vorschläge: letzte 5 verschiedenen, ohne Leere und Kontoabgleich", () => {
+  const e = ["Miete", "", "Bäcker", D.KONTOABGLEICH, "Bäcker", "Rewe", "Tanken", "Kino", "Arzt"].map((note, i) => mk({ id: "n" + i, note }));
+  assert.deepEqual(D.recentNotes(e), ["Arzt", "Kino", "Tanken", "Rewe", "Bäcker"]);
+  assert.deepEqual(D.recentNotes(e, 2), ["Arzt", "Kino"]);
+  assert.deepEqual(D.recentNotes([]), []);
+});
+
+test("Vorlagen: Migration, Gleichheit, Kategorie umbenennen/löschen zieht mit", () => {
+  const tpl = { id: "t1", type: "out", amount: 340, cat: "Lebensmittel", note: "Bäcker", repeat: "none" };
+  const st = D.migrate({ entries: [], templates: [tpl, { ...tpl, id: "" }, { ...tpl, id: "t3", amount: -1 }, { ...tpl, id: "t4", repeat: "toString" }] });
+  assert.deepEqual(st.templates, [tpl]);
+  assert.deepEqual(D.migrate({}).templates, []);
+  assert.equal(D.sameTemplate(tpl, { ...tpl, id: "x" }), true);
+  assert.equal(D.sameTemplate(tpl, { ...tpl, amount: 1 }), false);
+  const renamed = D.renameCat(st, "out", "Lebensmittel", "Essen");
+  assert.equal(renamed.templates[0].cat, "Essen");
+  const deleted = D.deleteCat(renamed, "out", "Essen");
+  assert.equal(deleted.templates[0].cat, "Sonstiges");
+  assert.equal(st.templates[0].cat, "Lebensmittel");   // Original unverändert
+});

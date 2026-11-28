@@ -72,8 +72,16 @@
   .saverow { position:sticky; bottom:0; display:flex; gap:8px; background:var(--card); padding:12px 0 4px; margin-top:6px; }
   .saverow input { flex:1; }
   .saverow .btn { flex:1.2; min-height:50px; font-size:1.05rem; }
-  #editActions { margin-top:4px; }
-  #editActions[hidden] { display:none; }
+  /* Notiz-Vorschläge direkt unter dem Notizfeld */
+  .chips.notes { margin:6px 0 10px; }
+  .chips.notes:empty { display:block; height:4px; margin:0; }
+  /* Aktionen im Dialog: echte Knöpfe mit Symbol */
+  .acts { display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:8px; margin-top:8px; }
+  .act { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:56px;
+         background:var(--bg); border:1px solid var(--line); border-radius:12px; font-size:.85rem; font-weight:700; color:var(--acc); }
+  .act span { font-size:1.25rem; line-height:1; }
+  .act[hidden] { display:none; }
+  .act.danger { color:var(--red); }
   /* Emoji-Auswahl (Kategorie-/Konto-Symbol) */
   .emojis { display:grid; grid-template-columns:repeat(6,1fr); gap:4px; margin-top:6px; max-height:200px; overflow-y:auto; }
   .emojis button { font-size:1.45rem; min-width:0; min-height:46px; border-radius:10px; background:var(--bg); }
@@ -294,6 +302,11 @@
       <button class="link" id="btnCatAdd">+ Kategorie hinzufügen</button>
     </section>
     <section class="card">
+      <h2>Vorlagen</h2>
+      <ul id="tplList"></ul>
+      <p class="mut">Vorlagen legst du im Buchungs-Dialog mit „⭐ Als Vorlage“ an. Beim Erfassen erscheinen sie oben mit ⭐ und füllen das Formular per Antippen.</p>
+    </section>
+    <section class="card">
       <h2>Daten &amp; App</h2>
       <div class="row" style="justify-content:flex-start;flex-wrap:wrap">
         <button class="link" id="btnExport">Export (Backup)</button><button class="link" id="btnImport">Import</button>
@@ -326,7 +339,8 @@
     <button data-rep="none" class="on">Einmalig</button><button data-rep="monthly">Monatl.</button>
     <button data-rep="quarterly">Viertelj.</button><button data-rep="halfyearly">Halbj.</button><button data-rep="yearly">Jährl.</button>
   </div>
-  <input id="note" placeholder="Notiz (optional)" maxlength="80" aria-label="Notiz" style="margin-bottom:10px">
+  <input id="note" placeholder="Notiz (optional)" maxlength="80" aria-label="Notiz" autocomplete="off">
+  <div class="chips notes" id="noteChips" aria-label="Letzte Notizen"></div>
   <p class="mut" style="margin-bottom:8px">Kategorie</p>
   <div class="tiles" id="tiles"></div>
   <!-- Speichern bleibt unten sichtbar (auch wenn der Dialog scrollt) -->
@@ -334,9 +348,10 @@
     <input id="date" type="date" aria-label="Datum">
     <button class="btn" id="btnSave">Speichern</button>
   </div>
-  <div class="row" id="editActions" hidden>
-    <button class="link" id="btnCopy">Kopieren (neues Datum)</button>
-    <button class="link danger" id="btnDelete">Löschen</button>
+  <div class="acts" id="sheetActs">
+    <button class="act" id="btnCopy" aria-label="Als neue Buchung kopieren"><span>📋</span>Kopieren</button>
+    <button class="act" id="btnTemplate" aria-label="Als Vorlage speichern"><span>⭐</span>Als Vorlage</button>
+    <button class="act danger" id="btnDelete" aria-label="Buchung löschen"><span>🗑️</span>Löschen</button>
   </div>
 </dialog>
 

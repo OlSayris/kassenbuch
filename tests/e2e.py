@@ -104,6 +104,28 @@ with sync_playwright() as p:
     step("Buchung kopieren")
 
     page.click("#fab")
+    expect(page.locator("#noteChips button").first).to_be_visible()
+    page.click("#noteChips button:has-text('Haftpflicht')")
+    expect(page.locator("#note")).to_have_value("Haftpflicht")
+    page.fill("#note", "Bäck")
+    expect(page.locator("#noteChips button")).to_have_count(0)        # filtert beim Tippen
+    page.fill("#note", "Bäcker")
+    page.fill("#amount", "3,40")
+    page.click("#tiles button:has-text('Lebensmittel')")
+    page.click("#btnTemplate")
+    assert page.evaluate("state.templates.length") == 1, "Vorlage nicht gespeichert"
+    page.keyboard.press("Escape")
+    step("Notiz-Vorschläge (letzte Eingaben) und „Als Vorlage“ speichern")
+
+    page.click("#fab")
+    page.click("#quick button:has-text('⭐')")
+    expect(page.locator("#amount")).to_have_value("3,40")
+    expect(page.locator("#tiles button.sel")).to_contain_text("Lebensmittel")
+    page.click("#btnSave")
+    expect(page.locator("#list li:has-text('Bäcker')")).to_have_count(1)
+    step("Vorlage beim Erfassen einfügen und speichern")
+
+    page.click("#fab")
     page.fill("#amount", "4,20")
     page.click("#tiles .newcat")
     page.fill("#inpFields input:not([type=hidden])", "Kaffee")
@@ -142,7 +164,7 @@ with sync_playwright() as p:
 
     page.reload()
     page.wait_for_load_state("networkidle")
-    expect(page.locator("#list li[data-id]")).to_have_count(5)
+    expect(page.locator("#list li[data-id]")).to_have_count(6)
     step("Daten nach Neuladen erhalten")
 
     # Datenverlust simulieren: Hauptdaten weg → App stellt die automatische Sicherung wieder her

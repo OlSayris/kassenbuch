@@ -1,5 +1,5 @@
 // Service Worker – bei JEDER Änderung an einer Datei VERSION erhöhen!
-const VERSION = "1.5.8";
+const VERSION = "1.5.9";
 const CACHE = "kassenbuch-" + VERSION;
 const FILES = ["./", "./index.html", "./manifest.json", "./sw.js", "./js/data.js", "./js/ui.js", "./js/accounts.js", "./js/budget.js", "./js/backup.js", "./js/more.js",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/maskable-512.png", "./icons/apple-touch-icon.png",

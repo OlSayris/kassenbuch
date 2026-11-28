@@ -87,9 +87,12 @@ function migrate(raw) {
     .filter((a) => a && cleanName(a.name) && Number.isInteger(a.balance) && ISO_DATE.test(a.updated))
     .map((a) => ({ id: String(a.id || uid()), name: cleanName(a.name), icon: String(a.icon || "🏦").slice(0, 8),
                    balance: a.balance, updated: a.updated, prev: Number.isInteger(a.prev) ? a.prev : null }));
+  // Vorlagen: gespeicherte Buchungs-Muster zum schnellen Einfügen beim Erfassen
+  const templates = (Array.isArray(r.templates) ? r.templates : []).filter(isTemplate)
+    .map((t) => ({ id: t.id, type: t.type, amount: t.amount, cat: t.cat, note: t.note.slice(0, 80), repeat: t.repeat }));
   return {
     entries: list.map(migrateEntry).filter(isValid),
-    accounts,
+    accounts, templates,
     budget: posInt(r.budget),
     opening, catBudgets, goals,
     cats: migrateCats(r.cats),
@@ -213,25 +216,42 @@ function search(entries, { q = "", type = "", cat = "", from, to }) {
 }
 
 /* ---------- Kategorien ---------- */
-/** Umbenennen (und Symbol ändern): Buchungen und Budget ziehen mit */
+/** Kategorie in Buchungen und Vorlagen ersetzen */
+const swapCat = (list, type, from, to) => (list || []).map((x) => (x.type === type && x.cat === from ? { ...x, cat: to } : x));
+/** Umbenennen (und Symbol ändern): Buchungen, Vorlagen und Budget ziehen mit */
 function renameCat(st, type, oldName, newName, icon) {
   const name = cleanName(newName);
   if (!name || (name !== oldName && st.cats[type].some(([n]) => n === name))) return st;
   const cats = { ...st.cats, [type]: st.cats[type].map(([n, i]) => (n === oldName ? [name, icon || i] : [n, i])) };
-  const entries = st.entries.map((e) => (e.type === type && e.cat === oldName ? { ...e, cat: name } : e));
   const catBudgets = { ...st.catBudgets };
   if (type === "out" && Object.hasOwn(catBudgets, oldName)) { catBudgets[name] = catBudgets[oldName]; if (name !== oldName) delete catBudgets[oldName]; }
-  return { ...st, cats, entries, catBudgets };
+  return { ...st, cats, catBudgets, entries: swapCat(st.entries, type, oldName, name), templates: swapCat(st.templates, type, oldName, name) };
 }
-/** Löschen: Buchungen wandern nach „Sonstiges“ (das selbst nicht löschbar ist) */
+/** Löschen: Buchungen und Vorlagen wandern nach „Sonstiges“ (das selbst nicht löschbar ist) */
 function deleteCat(st, type, name) {
   if (name === "Sonstiges") return st;
   const catBudgets = { ...st.catBudgets };
   if (type === "out") delete catBudgets[name];
   return { ...st, catBudgets,
     cats: { ...st.cats, [type]: st.cats[type].filter(([n]) => n !== name) },
-    entries: st.entries.map((e) => (e.type === type && e.cat === name ? { ...e, cat: "Sonstiges" } : e)) };
+    entries: swapCat(st.entries, type, name, "Sonstiges"), templates: swapCat(st.templates, type, name, "Sonstiges") };
 }
+
+/* ---------- Notiz-Vorschläge & Vorlagen ---------- */
+/** Die letzten n verschiedenen Notizen (zuletzt erfasst zuerst), ohne Kontoabgleich */
+function recentNotes(entries, n = 5) {
+  const out = [];
+  for (let i = entries.length - 1; i >= 0 && out.length < n; i--) {
+    const note = String(entries[i].note || "").trim();
+    if (note && note !== KONTOABGLEICH && !out.includes(note)) out.push(note);
+  }
+  return out;
+}
+const isTemplate = (t) => !!t && typeof t.id === "string" && t.id.length > 0 && (t.type === "in" || t.type === "out")
+  && Number.isInteger(t.amount) && t.amount > 0 && typeof t.cat === "string" && t.cat.length > 0
+  && typeof t.note === "string" && Object.hasOwn(STEP, t.repeat);
+/** Gleiche Vorlage schon vorhanden? (gleiche Art, Betrag, Kategorie, Notiz, Häufigkeit) */
+const sameTemplate = (a, b) => a.type === b.type && a.amount === b.amount && a.cat === b.cat && a.note === b.note && a.repeat === b.repeat;
 
 /* ---------- Sicherungen ---------- */
 /** Dateiname einer Sicherung, z. B. kassenbuch-2026-11-28.json oder kassenbuch-2026-11-28-vor-1.5.7.json */
@@ -258,5 +278,5 @@ if (typeof module !== "undefined") {
   module.exports = { SCHEMA, KONTOABGLEICH, STEP, DEFAULT_CATS, monthIdx, ymOf, toIso, lastDay, addDays, parseAmount,
     parseSigned, migrate, migrateEntry, isValid, countUntil, occursIn, occDay, monthData, catTotals, balanceAt,
     reconcileEntry, applyEdit, deleteOcc, quickSuggestions, search, renameCat, deleteCat, backupName, backupsToDelete,
-    backupLabel, entryCount, REP_LABEL };
+    backupLabel, entryCount, REP_LABEL, recentNotes, isTemplate, sameTemplate };
 }

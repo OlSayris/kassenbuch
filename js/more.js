@@ -32,12 +32,29 @@ let catType = "out";
 function renderSettings() {
   $("#title").textContent = "Einstellungen";
   renderCatList();
+  renderTemplates();
   $("#lockToggle").checked = state.lock;
   $("#lockToggle").disabled = !PLUGINS.NativeBiometric;
   $("#lockHint").textContent = PLUGINS.NativeBiometric
     ? "Beim Öffnen und nach 30 s im Hintergrund wird nach Fingerabdruck oder Display-PIN gefragt. Die Daten selbst sind nicht verschlüsselt."
     : "Nur in der Android-App verfügbar.";
 }
+
+/* ---------- Vorlagen ---------- */
+function renderTemplates() {
+  $("#tplList").innerHTML = state.templates.length ? state.templates.map((t, i) => {
+    const rep = t.repeat !== "none" ? `, ${REP_LABEL[t.repeat]}` : "";
+    return `<li data-i="${i}"><span class="ico">${esc(catIcon(t.type, t.cat))}</span>`
+      + `<div class="txt"><div>${esc(t.note || t.cat)}</div><div class="mut">${esc(t.cat)}${rep}</div></div>`
+      + `<span class="amt ${t.type === "in" ? "in" : ""}">${t.type === "in" ? "+" : "−"}${fmt(t.amount)}</span>`
+      + `<button class="del" aria-label="Vorlage löschen">✕</button></li>`;
+  }).join("") : `<li class="mut">Noch keine Vorlagen.</li>`;
+}
+$("#tplList").onclick = (e) => {
+  if (!e.target.closest(".del")) return;
+  const i = +e.target.closest("li[data-i]").dataset.i, t = state.templates[i];
+  if (confirm(`Vorlage „${t.note || t.cat}“ (${fmt(t.amount)}) löschen?`)) setState({ templates: state.templates.filter((_, k) => k !== i) });
+};
 
 /* ---------- Kategorien ---------- */
 function renderCatList() {
