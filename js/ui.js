@@ -128,7 +128,7 @@ function renderMonth() {
   $("#cmpOut").innerHTML = prev.sumOut ? "vs. Vormonat" + cmpHtml(pct(md.sumOut, prev.sumOut)) : "";
   setMoney("#saldo", md.sumIn - md.sumOut);
   renderBudget(md.sumOut);
-  renderCatBars($("#cats"), catTotals(md.items), catTotals(prev.items), true, "Ausgaben nach Kategorie · Tippen = Budget planen");
+  renderCatBars($("#cats"), catTotals(md.items), catTotals(prev.items), true, "Ausgaben nach Kategorie");
   renderList($("#list"), md.items, true);
 }
 function renderBudget(sumOut) {
@@ -158,15 +158,29 @@ function renderCatBars(el, totals, prevTotals, withBudget, title) {
   // Tippen auf eine Kategorie → Reiter „Budget“
   el.onclick = withBudget ? (e) => { if (e.target.closest("button[data-i]")) switchView("budget"); } : null;
 }
-/** Buchungsliste. editable (Monat): Tippen = bearbeiten/löschen; sonst (Suche): Tippen = zum Monat springen */
+/** Eine Buchungszeile; withDate: Datum mit anzeigen (Suche), sonst steht es in der Tagesüberschrift */
+function entryRow(e, withDate) {
+  const rep = e.repeat !== "none" ? `, ↻ ${REP_LABEL[e.repeat]}` : "";
+  const date = withDate ? new Date(e.day + "T12:00:00").toLocaleDateString("de-DE", { dateStyle: "medium" }) + ", " : "";
+  return `<li class="tap" data-id="${esc(e.id)}" data-t="${e.t}"><span class="ico">${esc(catIcon(e.type, e.cat))}</span>`
+    + `<div class="txt"><div>${esc(e.note || e.cat)}</div><div class="mut">${date}${esc(e.cat)}${rep}</div></div>`
+    + `<span class="amt ${e.type === "in" ? "in" : ""}">${e.type === "in" ? "+" : "−"}${fmt(e.amount)}</span></li>`;
+}
+/** Kassenbuch-Seite: Buchungen nach Tagen gruppiert, je Tag die Tagessumme */
+function ledgerHtml(items) {
+  const days = [...new Set(items.map((e) => e.day))];
+  return days.map((d) => {
+    const list = items.filter((e) => e.day === d), sum = list.reduce((s, e) => s + (e.type === "in" ? e.amount : -e.amount), 0);
+    const label = new Date(d + "T12:00:00").toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+    // Tagessumme nur, wenn mehrere Buchungen – sonst stünde derselbe Betrag doppelt da
+    const total = list.length > 1 ? `<span class="amt">${sum > 0 ? "+" : sum < 0 ? "−" : ""}${fmt(Math.abs(sum))}</span>` : "";
+    return `<li class="day"><span>${label}</span>${total}</li>`
+      + list.map((e) => entryRow(e, false)).join("");
+  }).join("");
+}
+/** Buchungsliste. editable (Monat): Kassenbuch-Seite, Tippen = bearbeiten/löschen; sonst (Suche): Tippen = zum Monat springen */
 function renderList(el, items, editable) {
-  el.innerHTML = items.length ? items.map((e) => {
-    const rep = e.repeat !== "none" ? ` · ↻ ${REP_LABEL[e.repeat]}` : "";
-    const date = new Date(e.day).toLocaleDateString("de-DE", editable ? { day: "2-digit", month: "2-digit" } : { dateStyle: "medium" });
-    return `<li class="tap" data-id="${esc(e.id)}" data-t="${e.t}"><span class="ico">${esc(catIcon(e.type, e.cat))}</span>`
-      + `<div class="txt"><div>${esc(e.note || e.cat)}</div><div class="mut">${date} · ${esc(e.cat)}${rep}</div></div>`
-      + `<span class="amt ${e.type === "in" ? "in" : ""}">${e.type === "in" ? "+" : "−"}${fmt(e.amount)}</span></li>`;
-  }).join("") : editable
+  el.innerHTML = items.length ? (editable ? ledgerHtml(items) : items.map((e) => entryRow(e, true)).join("")) : editable
     ? `<li class="empty">Noch keine Buchungen in diesem Monat.<br>Tippe unten rechts auf <b>+</b>, um eine Ausgabe oder Einnahme zu erfassen.</li>`
     : `<li class="empty">Keine Treffer.</li>`;
 }
