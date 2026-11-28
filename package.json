@@ -5,13 +5,15 @@
   "description": "Kassenbuch als PWA und Android-App (Capacitor)",
   "scripts": {
     "build": "node scripts/build-www.js",
-    "sync": "npm run build && npx cap sync android"
+    "sync": "npm run build && npx cap sync android",
+    "test": "node --test tests/data.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.3",
     "@capacitor/core": "8.6.3",
     "@capacitor/filesystem": "8.1.5",
-    "@capacitor/share": "8.0.3"
+    "@capacitor/share": "8.0.3",
+    "@capgo/capacitor-native-biometric": "8.9.3"
   },
   "devDependencies": {
     "@capacitor/assets": "4.0.0",
